@@ -198,7 +198,7 @@ export function App() {
                     <th scope="col">Project / thread</th>
                     <th scope="col">Model</th>
                     <th scope="col">Context used</th>
-                    <th scope="col">Total tokens</th>
+                    <th scope="col" title="All tokens this thread has used across every turn, not the current context">Total tokens</th>
                     <th scope="col">Compactions</th>
                     <th scope="col">Last activity</th>
                     <th scope="col"><span className="sr-only">Open in Codex</span></th>
@@ -477,7 +477,7 @@ function ThreadRow({
         {thread ? <MetricText
             metric={thread.totalTokens}
             formatter={formatCompactTokens}
-            exactFormatter={(value) => `${formatExactTokens(value)} tokens`}
+            exactFormatter={(value) => `${formatExactTokens(value)} tokens used by the whole thread`}
           /> : <NA />}
       </td>
       <td className="compactions-cell">
@@ -722,8 +722,12 @@ function ThreadDetail({ thread, onClose }: { thread: ThreadView; onClose: () => 
             <DetailMetric label="Cached input" metric={thread.cachedInputTokens} formatter={formatExactTokens} />
             <DetailMetric label="Output" metric={thread.outputTokens} formatter={formatExactTokens} />
             <DetailMetric label="Reasoning" metric={thread.reasoningOutputTokens} formatter={formatExactTokens} />
-            <DetailMetric label="Total" metric={thread.totalTokens} formatter={formatExactTokens} wide />
+            <DetailMetric label="Total (whole thread)" metric={thread.totalTokens} formatter={formatExactTokens} wide />
           </div>
+          <p className="detail-hint detail-hint--block">
+            Input and output from every turn added up. Codex sends the conversation again on each turn, so cached
+            input is counted every time. That’s why the total can be far larger than the context window.
+          </p>
         </section>
 
         <section className="detail-section">
@@ -889,6 +893,18 @@ function HelpPanel() {
           <p>
             The bar turns amber at 60% and red at 80%. When the context fills up, Codex compacts the conversation;
             the <strong>Compactions</strong> column counts how often that happened.
+          </p>
+        </section>
+        <section>
+          <h3>Total tokens</h3>
+          <p>
+            <strong>Total tokens</strong> is everything a thread has used so far: input plus output from every turn,
+            as Codex reports it. It only grows, even after a compaction.
+          </p>
+          <p>
+            Input includes <strong>cached input</strong>: Codex sends the conversation again on each turn, so the
+            same text is counted every time. That’s why the total is often many times larger than the context window.
+            How full the context is right now is shown in <strong>Context used</strong>.
           </p>
         </section>
         <section>

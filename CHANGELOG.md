@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The threads table shows total tokens in a short form (for example `7.5M`).
   The exact count is in the tooltip, is read by screen readers, and stays in
   the thread details panel.
+- Total tokens is now explained as cumulative usage for the whole thread
+  (every turn, including cached input), not the current context: in the
+  column tooltip, the thread details panel and “How to read these numbers”.
 
 ## 0.1.0 - 2026-11-16
 

@@ -23,6 +23,8 @@ using only the data Codex already stores on your machine.
 - **Context window** – how full each thread's context is (used and left),
   calculated the same way Codex calculates “context left”.
 - **Token usage** – input, cached input, output, reasoning and total tokens.
+  The total is cumulative for the whole thread (every turn, including cached
+  input), so it is often much larger than the context window.
 - **Compactions** – how often Codex compacted each conversation, and when.
 - **Account limits** – the 5-hour and weekly limits: percentage used and left,
   when the window resets and when Codex last recorded the values.

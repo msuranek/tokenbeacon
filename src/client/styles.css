@@ -232,6 +232,7 @@ main { width: min(1580px, 100%); padding: 22px 28px 36px; margin: 0 auto; }
 .detail-row__value strong { font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .detail-row--stacked { flex-wrap: wrap; padding: 10px 0; }
 .detail-hint { flex: 1 0 100%; margin: 4px 0 0; color: var(--faint); font-size: 11px; line-height: 1.45; }
+.detail-hint--block { margin-top: 8px; }
 .primary-button { width: 100%; height: 42px; margin-top: 24px; border: 1px solid #5f61b8; border-radius: 8px; background: #5758a8; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; font-size: 13px; font-weight: 600; cursor: pointer; }
 .primary-button:hover { background: #6364b9; }
 .primary-button:disabled { opacity: .4; cursor: default; }
