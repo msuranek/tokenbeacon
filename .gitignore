@@ -1,0 +1,76 @@
+# ---------------------------------------------------------------------------
+# Internal working documents: local only, never committed (even to a private repo)
+# ---------------------------------------------------------------------------
+/PLAN.md
+/RESEARCH.md
+/OPEN_SOURCE_AUDIT.md
+/phase0/
+CLAUDE.md
+CLAUDE.local.md
+/.claude/
+# Any other Markdown at the root is treated as internal unless allowlisted here.
+/*.md
+!/README.md
+!/SECURITY.md
+!/CONTRIBUTING.md
+!/CHANGELOG.md
+# Common places for audits, reports, notes, plans and scratch work
+/internal/
+/notes/
+/reports/
+/audits/
+/scratch/
+/backup*/
+*.local.md
+*.local.*
+*.bak
+*.orig
+
+# ---------------------------------------------------------------------------
+# Codex data and credentials: never commit real user data
+# ---------------------------------------------------------------------------
+auth.json
+auth.json.*
+.codex/
+sessions/
+archived_sessions/
+rollout-*.jsonl
+rollout-*.jsonl.zst
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.db-*
+history.jsonl
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------------------------------------------------------------------------
+# Build output, dependencies, caches, logs
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+*.log
+logs/
+npm-debug.log*
+
+# Diagnostic dumps
+*.snapshot.json
+snapshot*.json
+*.heapsnapshot
+*.cpuprofile
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
