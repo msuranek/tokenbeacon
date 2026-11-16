@@ -8,7 +8,11 @@ using only the data Codex already stores on your machine.
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
-**Status:** early and experimental (preparing v0.1.0). Tested on macOS.
+**Status:** early and experimental (preparing v0.1.0). **macOS only.**
+
+![Codex Monitor dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
+
+<sub>The screenshot uses fictional demo data.</sub>
 
 ## Features
 
@@ -63,13 +67,25 @@ is inside `sessions/` or `archived_sessions/`.
 
 ## Requirements
 
-- **macOS.** This is the tested platform. Linux may work but has not been
-  verified with real Codex data yet. Windows is not supported.
-- **Node.js 22.18 or newer** (an LTS release is recommended). The app uses the
-  built-in `node:sqlite` module and runs TypeScript directly.
-- **Codex** installed and used at least once on this machine.
+- **macOS.** v0.1.0 supports macOS only; Linux and Windows are not supported.
+  Tested on macOS 26 with Apple silicon. Intel Macs are expected to work but
+  are untested.
+- **Node.js 22.18 or newer**, ideally the current LTS release. Install it from
+  [nodejs.org](https://nodejs.org/) or with Homebrew: `brew install node`.
+  The app uses the built-in `node:sqlite` module and runs TypeScript directly.
+  CI tests Node.js 22.18, 24 and 26.
+- **Git**, for example from the Xcode Command Line Tools: `xcode-select --install`.
+- **Codex** (the desktop app or the CLI) used at least once on this Mac.
 - **zstd** to read archived threads: `brew install zstd`. Without it, archived
   threads show token and context values as unavailable.
+
+Check your setup:
+
+```sh
+node --version   # v22.18.0 or newer
+zstd --version
+ls ~/.codex      # Codex data folder (or your CODEX_HOME)
+```
 
 ## Installation
 
@@ -97,7 +113,7 @@ packages are build tools; the server itself uses only Node.js built-ins.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `CODEX_HOME` | `~/.codex` | Location of your Codex data folder. Use the same value Codex uses. |
+| `CODEX_HOME` | `~/.codex` | Location of your Codex data folder. Codex uses `~/.codex` unless you set `CODEX_HOME` for it; use the same value here. |
 | `CODEX_MONITOR_PORT` | `4310` | Local port for the dashboard. |
 
 ```sh
@@ -142,7 +158,7 @@ table.
   or moved folders.
 - **Thread visibility** follows the Codex app's thread list. If that list is
   unavailable, an estimate is used and the dashboard says so.
-- **Open in Codex** has been verified with the Codex desktop app on macOS only.
+- **Open in Codex** needs the Codex desktop app; it opens `codex://` links.
 - **Large histories:** the first start can take several seconds while archived
   threads are decompressed. The dashboard refreshes every 5 seconds.
 - **Single user, local machine.** There is no authentication. Do not put the
@@ -154,7 +170,9 @@ table.
 | --- | --- |
 | “Codex data not found” | Open Codex once, or set `CODEX_HOME` to your Codex data folder. |
 | “Port 4310 is already in use” | Codex Monitor may already be running: open <http://127.0.0.1:4310>. Otherwise start with `CODEX_MONITOR_PORT=4311 npm start`. |
-| “Codex Monitor cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). |
+| “Codex Monitor cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). Check with `node --version`. |
+| `command not found: npm` | Node.js is not installed or not on your `PATH`. Install it from nodejs.org or with `brew install node`, then open a new Terminal window. |
+| “Open in Codex” does nothing | Install and open the Codex desktop app once so macOS registers `codex://` links. |
 | Archived threads show N/A | Install zstd: `brew install zstd`. |
 | Many values show N/A | Your Codex version may store data differently. The notice above the table explains which data is missing. |
 | A limit shows “Awaiting fresh data” | The usage window has ended. Make any request in Codex; the card updates automatically. |
@@ -175,6 +193,13 @@ npm run test:live  # optional smoke test against your own Codex data (read-only)
 npm run bench      # optional refresh benchmark against your own Codex data
 ```
 
+To try the dashboard without your own data, create a fictional Codex folder:
+
+```sh
+node scripts/create-demo-data.ts /tmp/codex-demo
+CODEX_HOME=/tmp/codex-demo npm start
+```
+
 `npm test` never reads your real Codex data: it builds temporary Codex folders
 with synthetic data. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -189,6 +214,8 @@ src/limits.ts           account limit selection and window expiry
 src/sources/            read-only SQLite and rollout readers
 src/client/             React dashboard
 tests/                  automated tests (synthetic fixtures)
+scripts/                development tools (fictional demo data)
+.github/workflows/      CI on macOS
 ```
 
 ## Security

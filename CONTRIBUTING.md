@@ -19,7 +19,7 @@ Every change must keep these properties:
 
 ## Development setup
 
-Requirements: Node.js 22.18 or newer and `zstd` (`brew install zstd`).
+Requirements: macOS, Node.js 22.18 or newer and `zstd` (`brew install zstd`).
 
 ```sh
 npm install
@@ -38,6 +38,10 @@ npm run bench      # optional: refresh benchmark against your own Codex data
 
 - Tests must not depend on a real Codex installation. Use the synthetic
   fixtures in `tests/helpers/fixture-codex-home.ts`.
+- For screenshots and manual testing, use fictional data from
+  `node scripts/create-demo-data.ts <empty-directory>`.
+- CI runs typecheck, tests, build and a start-up smoke test on macOS with
+  Node.js 22.18, 24 and 26.
 - Add a test for every bug fix and for every new data source or field.
 - Security-relevant code (HTTP validation, path handling, sanitizing) needs
   tests for the rejected cases too.
