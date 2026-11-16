@@ -150,7 +150,7 @@ main { width: min(1580px, 100%); padding: 22px 28px 36px; margin: 0 auto; }
 .nest-line { width: 16px; height: 1px; background: #343843; margin: 0 9px 0 12px; flex: 0 0 auto; }
 
 .metric-text { display: flex; align-items: center; gap: 6px; min-width: 0; color: #bfc2c9; }
-.metric-text > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.metric-text > span:not(.state-dot):not(.sr-only) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .metric-text--last-known { color: #a79f90; }
 .metric-text--unavailable, .na { color: var(--faint); }
 .state-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }

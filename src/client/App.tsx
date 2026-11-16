@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatCompactTokens, formatExactTokens } from "./format.ts";
 import type {
   LimitWindow,
   MetricValue,
@@ -473,7 +474,11 @@ function ThreadRow({
         {thread ? <ContextBar metric={thread.contextUsedPercent} /> : <NA />}
       </td>
       <td className="tokens-cell">
-        {thread ? <MetricText metric={thread.totalTokens} formatter={formatTokens} /> : <NA />}
+        {thread ? <MetricText
+            metric={thread.totalTokens}
+            formatter={formatCompactTokens}
+            exactFormatter={(value) => `${formatExactTokens(value)} tokens`}
+          /> : <NA />}
       </td>
       <td className="compactions-cell">
         {thread ? <MetricText metric={thread.compactionCount} /> : <NA />}
@@ -703,8 +708,8 @@ function ThreadDetail({ thread, onClose }: { thread: ThreadView; onClose: () => 
               {context === null ? "Unavailable" : `${context}% used · ${contextLeft}% left`}
             </strong>
             <span className="context-tokens">
-              {formatMetricValue(thread.contextTokens, formatTokens)} of{" "}
-              {formatMetricValue(thread.contextWindowTokens, formatTokens)} tokens
+              {formatMetricValue(thread.contextTokens, formatExactTokens)} of{" "}
+              {formatMetricValue(thread.contextWindowTokens, formatExactTokens)} tokens
             </span>
             <MetricStateBadge state={thread.contextUsedPercent.state} />
           </div>
@@ -713,11 +718,11 @@ function ThreadDetail({ thread, onClose }: { thread: ThreadView; onClose: () => 
         <section className="detail-section">
           <h3>Token usage</h3>
           <div className="metric-grid">
-            <DetailMetric label="Input" metric={thread.inputTokens} formatter={formatTokens} />
-            <DetailMetric label="Cached input" metric={thread.cachedInputTokens} formatter={formatTokens} />
-            <DetailMetric label="Output" metric={thread.outputTokens} formatter={formatTokens} />
-            <DetailMetric label="Reasoning" metric={thread.reasoningOutputTokens} formatter={formatTokens} />
-            <DetailMetric label="Total" metric={thread.totalTokens} formatter={formatTokens} wide />
+            <DetailMetric label="Input" metric={thread.inputTokens} formatter={formatExactTokens} />
+            <DetailMetric label="Cached input" metric={thread.cachedInputTokens} formatter={formatExactTokens} />
+            <DetailMetric label="Output" metric={thread.outputTokens} formatter={formatExactTokens} />
+            <DetailMetric label="Reasoning" metric={thread.reasoningOutputTokens} formatter={formatExactTokens} />
+            <DetailMetric label="Total" metric={thread.totalTokens} formatter={formatExactTokens} wide />
           </div>
         </section>
 
@@ -793,11 +798,31 @@ function DetailRow<T>({
   );
 }
 
-function MetricText<T>({ metric, formatter, mono }: { metric: MetricValue<T>; formatter?: (value: T) => string; mono?: boolean }) {
+function MetricText<T>({
+  metric,
+  formatter,
+  exactFormatter,
+  mono,
+}: {
+  metric: MetricValue<T>;
+  formatter?: (value: T) => string;
+  /** Full-precision text for a shortened value: shown on hover and read by screen readers. */
+  exactFormatter?: (value: T) => string;
+  mono?: boolean;
+}) {
+  const exact = exactFormatter && metric.value !== null ? exactFormatter(metric.value) : null;
+  const title = exact ? `${exact} · ${describeMetric(metric)}` : describeMetric(metric);
   return (
-    <div className={`metric-text metric-text--${metric.state}`} title={describeMetric(metric)}>
+    <div className={`metric-text metric-text--${metric.state}`} title={title}>
       <span className={`state-dot state-dot--${metric.state}`} />
-      <span className={mono ? "mono" : ""}>{formatMetricValue(metric, formatter)}</span>
+      {exact ? (
+        <>
+          <span className={mono ? "mono" : ""} aria-hidden="true">{formatMetricValue(metric, formatter)}</span>
+          <span className="sr-only">{exact}</span>
+        </>
+      ) : (
+        <span className={mono ? "mono" : ""}>{formatMetricValue(metric, formatter)}</span>
+      )}
     </div>
   );
 }
@@ -945,10 +970,6 @@ function formatMetricValue<T>(metric: MetricValue<T>, formatter?: (value: T) => 
 // One English locale for all formatting, so dates don't mix with the browser's
 // language. en-GB gives 24-hour times and unambiguous "16 Nov 2026" dates.
 const DATE_LOCALE = "en-GB";
-
-function formatTokens(value: number): string {
-  return new Intl.NumberFormat("en-US").format(value);
-}
 
 function formatRelativeDate(value: string): string {
   const difference = Date.now() - Date.parse(value);
