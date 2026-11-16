@@ -10,7 +10,7 @@ using only the data Codex already stores on your machine.
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
-**Status:** early and experimental (preparing v0.1.0). **macOS only.**
+**Status:** v0.1.0 – early and experimental. **macOS only.**
 
 ![TokenBeacon dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
 
