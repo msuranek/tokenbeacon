@@ -1,0 +1,42 @@
+{
+  "name": "codex-monitor",
+  "version": "0.1.0",
+  "description": "Local, read-only dashboard for Codex projects, threads, context usage and account limits.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/msuranek/codex-monitor.git"
+  },
+  "keywords": [
+    "codex",
+    "dashboard",
+    "monitor",
+    "local",
+    "read-only"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "start": "node --no-warnings src/main.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --no-warnings --test tests/*.test.ts",
+    "test:live": "node --no-warnings --test tests/live/*.test.ts",
+    "bench": "node --no-warnings bench/refresh.bench.ts",
+    "check": "npm run typecheck && node --check src/main.mjs && node --check src/runtime-check.mjs && node --check src/frontend-build.mjs && npm test && vite build"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.3.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
+  }
+}
