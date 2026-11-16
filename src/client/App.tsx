@@ -110,8 +110,8 @@ export function App() {
             <span />
           </div>
           <div>
-            <h1>Codex Monitor</h1>
-            <p>Local overview of your Codex projects and threads</p>
+            <h1>TokenBeacon</h1>
+            <p>Usage &amp; Context Dashboard for Codex</p>
           </div>
         </div>
 
@@ -166,7 +166,7 @@ export function App() {
         {connection === "offline" && !snapshot && (
           <div className="empty-state error-state">
             <OfflineIcon />
-            <h2>Can’t reach the Codex Monitor server</h2>
+            <h2>Can’t reach the TokenBeacon server</h2>
             <p>{lastError ?? "Start it with npm start; this page reconnects automatically."}</p>
           </div>
         )}

@@ -185,7 +185,7 @@ describe("local HTTP API security", () => {
 
   before(async () => {
     snapshot = await fixtureSnapshot();
-    workDir = mkdtempSync(path.join(tmpdir(), "codex-monitor-test-"));
+    workDir = mkdtempSync(path.join(tmpdir(), "tokenbeacon-test-"));
     const distRoot = path.join(workDir, "dist");
     mkdirSync(path.join(distRoot, "assets"), { recursive: true });
     writeFileSync(path.join(distRoot, "index.html"), "<!doctype html><title>INDEX</title>");
@@ -217,7 +217,7 @@ describe("local HTTP API security", () => {
       assert.equal(parsePort(undefined), 4310);
       assert.equal(parsePort("8080"), 8080);
       for (const bad of ["0", "65536", "-1", "80abc", "1e3", " 80", "0x50"]) {
-        assert.throws(() => parsePort(bad), /CODEX_MONITOR_PORT/);
+        assert.throws(() => parsePort(bad), /TOKENBEACON_PORT/);
       }
     });
   });

@@ -1,13 +1,13 @@
 {
-  "name": "codex-monitor",
+  "name": "tokenbeacon",
   "version": "0.1.0",
-  "description": "Local, read-only dashboard for Codex projects, threads, context usage and account limits.",
+  "description": "TokenBeacon – Usage & Context Dashboard for Codex. Local and read-only; unofficial, not affiliated with OpenAI.",
   "license": "MIT",
   "private": true,
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/msuranek/codex-monitor.git"
+    "url": "git+https://github.com/msuranek/tokenbeacon.git"
   },
   "keywords": [
     "codex",

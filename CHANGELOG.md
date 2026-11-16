@@ -7,7 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.1.0 - Unreleased
 
-First release. Supports macOS only.
+First release of TokenBeacon, the Usage & Context Dashboard for Codex.
+Supports macOS only.
 
 ### Added
 
@@ -29,7 +30,7 @@ First release. Supports macOS only.
 - Plain-language notices when Codex data is missing, incomplete or in an
   unsupported format.
 - Loading, offline and empty states; automatic reconnection.
-- `CODEX_HOME` and `CODEX_MONITOR_PORT` configuration.
+- `CODEX_HOME` and `TOKENBEACON_PORT` configuration.
 - `npm start` checks the Node.js version and builds the dashboard
   automatically when needed.
 - `/api/health` with path-free status codes for troubleshooting.

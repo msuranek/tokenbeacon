@@ -49,7 +49,7 @@ export async function assertSupportedRuntime() {
   if (problems.length > 0) {
     const error = new Error(
       [
-        "Codex Monitor cannot run on this Node.js runtime:",
+        "TokenBeacon cannot run on this Node.js runtime:",
         ...problems.map((problem) => `  - ${problem}`),
         `Install Node.js ${MIN_NODE_VERSION}+ (an LTS release is recommended) and try again.`,
       ].join("\n"),

@@ -1,6 +1,6 @@
-# Contributing to Codex Monitor
+# Contributing to TokenBeacon
 
-Thank you for your interest in improving Codex Monitor. This guide explains
+Thank you for your interest in improving TokenBeacon. This guide explains
 how to set up the project and what we expect from changes.
 
 ## Principles

@@ -134,7 +134,7 @@ describe("startup", () => {
         assert.ok(error instanceof StartupError);
         assert.equal(error.code, "EADDRINUSE");
         assert.match(error.message, new RegExp(`Port ${port} is already in use`));
-        assert.match(error.message, /CODEX_MONITOR_PORT=/);
+        assert.match(error.message, /TOKENBEACON_PORT=/);
         assert.ok(!/\n\s+at /.test(error.message), "no stack trace in message");
         return true;
       },

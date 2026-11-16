@@ -61,7 +61,7 @@ jobs:
         # serves the dashboard and reports the missing data instead of crashing.
         env:
           CODEX_HOME: ${{ runner.temp }}/empty-codex-home
-          CODEX_MONITOR_PORT: "4310"
+          TOKENBEACON_PORT: "4310"
         run: |
           mkdir -p "$CODEX_HOME"
           npm start > "$RUNNER_TEMP/server.log" 2>&1 &

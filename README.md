@@ -1,16 +1,18 @@
-# Codex Monitor
+# TokenBeacon
+
+**Usage & Context Dashboard for Codex**
 
 A local, read-only dashboard for your Codex projects and threads. It shows
 context usage, token usage, compactions and your account limits at a glance,
 using only the data Codex already stores on your machine.
 
-> **Unofficial project.** Codex Monitor is an independent community project. It
+> **Unofficial project.** TokenBeacon is an independent community project. It
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
 **Status:** early and experimental (preparing v0.1.0). **macOS only.**
 
-![Codex Monitor dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
+![TokenBeacon dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
 
 <sub>The screenshot uses fictional demo data.</sub>
 
@@ -33,7 +35,7 @@ using only the data Codex already stores on your machine.
 
 ## Privacy and security
 
-Codex Monitor is built to be privacy-first and strictly read-only.
+TokenBeacon is built to be privacy-first and strictly read-only.
 
 - **Local only.** The server listens on `127.0.0.1` and cannot be reached from
   your network. It makes no outbound connections: no telemetry, no analytics,
@@ -90,8 +92,8 @@ ls ~/.codex      # Codex data folder (or your CODEX_HOME)
 ## Installation
 
 ```sh
-git clone https://github.com/msuranek/codex-monitor.git
-cd codex-monitor
+git clone https://github.com/msuranek/tokenbeacon.git
+cd tokenbeacon
 npm install
 npm start
 ```
@@ -114,11 +116,11 @@ packages are build tools; the server itself uses only Node.js built-ins.
 | Variable | Default | Description |
 | --- | --- | --- |
 | `CODEX_HOME` | `~/.codex` | Location of your Codex data folder. Codex uses `~/.codex` unless you set `CODEX_HOME` for it; use the same value here. |
-| `CODEX_MONITOR_PORT` | `4310` | Local port for the dashboard. |
+| `TOKENBEACON_PORT` | `4310` | Local port for the dashboard. |
 
 ```sh
 CODEX_HOME=/path/to/codex-data npm start
-CODEX_MONITOR_PORT=4311 npm start
+TOKENBEACON_PORT=4311 npm start
 ```
 
 The server always binds to `127.0.0.1`. This is intentional and not
@@ -147,7 +149,7 @@ table.
 
 ## Known limitations
 
-- **Unofficial data formats.** Codex Monitor reads Codex's internal local
+- **Unofficial data formats.** TokenBeacon reads Codex's internal local
   storage, which is not a public API and can change with any Codex update. The
   monitor detects the schema and degrades gracefully (missing values become
   *Unavailable*), but new Codex versions may need updates.
@@ -169,8 +171,8 @@ table.
 | Problem | What to do |
 | --- | --- |
 | “Codex data not found” | Open Codex once, or set `CODEX_HOME` to your Codex data folder. |
-| “Port 4310 is already in use” | Codex Monitor may already be running: open <http://127.0.0.1:4310>. Otherwise start with `CODEX_MONITOR_PORT=4311 npm start`. |
-| “Codex Monitor cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). Check with `node --version`. |
+| “Port 4310 is already in use” | TokenBeacon may already be running: open <http://127.0.0.1:4310>. Otherwise start with `TOKENBEACON_PORT=4311 npm start`. |
+| “TokenBeacon cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). Check with `node --version`. |
 | `command not found: npm` | Node.js is not installed or not on your `PATH`. Install it from nodejs.org or with `brew install node`, then open a new Terminal window. |
 | “Open in Codex” does nothing | Install and open the Codex desktop app once so macOS registers `codex://` links. |
 | Archived threads show N/A | Install zstd: `brew install zstd`. |

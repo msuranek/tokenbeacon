@@ -5,7 +5,7 @@ import path from "node:path";
 import type { MonitorSnapshot } from "./types.ts";
 
 /**
- * Local HTTP surface of Codex Monitor.
+ * Local HTTP surface of TokenBeacon.
  *
  * Threat model: the API serves private metadata (project names, thread titles
  * and IDs) to the dashboard running on the same loopback origin. Any other web
@@ -59,9 +59,9 @@ export interface MonitorServerOptions {
 
 export function parsePort(raw: string | undefined): number {
   if (raw === undefined || raw === "") return DEFAULT_PORT;
-  if (!/^\d{1,5}$/.test(raw)) throw new Error(`Invalid CODEX_MONITOR_PORT: expected 1-65535`);
+  if (!/^\d{1,5}$/.test(raw)) throw new Error(`Invalid TOKENBEACON_PORT: expected 1-65535`);
   const port = Number(raw);
-  if (port < 1 || port > 65_535) throw new Error(`Invalid CODEX_MONITOR_PORT: expected 1-65535`);
+  if (port < 1 || port > 65_535) throw new Error(`Invalid TOKENBEACON_PORT: expected 1-65535`);
   return port;
 }
 

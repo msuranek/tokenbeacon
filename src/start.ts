@@ -59,7 +59,7 @@ export async function startMonitor(options: StartOptions): Promise<RunningMonito
   } catch (error) {
     throw describeListenError(error, options.port);
   }
-  log(`Codex Monitor is running at http://${address.address}:${address.port}  (read-only, local only)`);
+  log(`TokenBeacon is running at http://${address.address}:${address.port}  (read-only, local only)`);
   log(`Reading Codex data from ${redactHome(service.localData.codexHome)}`);
 
   const started = Date.now();
@@ -93,14 +93,14 @@ export function describeListenError(error: unknown, port: number): StartupError 
     return new StartupError(
       code,
       `Port ${port} is already in use.\n` +
-        `Codex Monitor may already be running: open http://127.0.0.1:${port}\n` +
-        `Otherwise stop the other program or choose another port, e.g. CODEX_MONITOR_PORT=${port === 65_535 ? port - 1 : port + 1} npm start`,
+        `TokenBeacon may already be running: open http://127.0.0.1:${port}\n` +
+        `Otherwise stop the other program or choose another port, e.g. TOKENBEACON_PORT=${port === 65_535 ? port - 1 : port + 1} npm start`,
     );
   }
   if (code === "EACCES") {
     return new StartupError(
       code,
-      `Not allowed to listen on port ${port}. Choose a port above 1024, e.g. CODEX_MONITOR_PORT=4310 npm start`,
+      `Not allowed to listen on port ${port}. Choose a port above 1024, e.g. TOKENBEACON_PORT=4310 npm start`,
     );
   }
   if (code === "EADDRNOTAVAIL") {

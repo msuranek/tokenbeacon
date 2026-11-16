@@ -39,7 +39,7 @@ export interface Fixture {
 }
 
 export function createTempRoot(): { root: string; cleanup(): void } {
-  const root = mkdtempSync(path.join(tmpdir(), "codex-monitor-fixture-"));
+  const root = mkdtempSync(path.join(tmpdir(), "tokenbeacon-fixture-"));
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 

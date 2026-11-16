@@ -7,9 +7,9 @@ const distRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 let port: number;
 try {
-  port = parsePort(process.env.CODEX_MONITOR_PORT);
+  port = parsePort(process.env.TOKENBEACON_PORT);
 } catch (error) {
-  console.error(`${error instanceof Error ? error.message : String(error)} (e.g. CODEX_MONITOR_PORT=4310)`);
+  console.error(`${error instanceof Error ? error.message : String(error)} (e.g. TOKENBEACON_PORT=4310)`);
   process.exit(1);
 }
 
@@ -17,7 +17,7 @@ let monitor: Awaited<ReturnType<typeof startMonitor>>;
 try {
   monitor = await startMonitor({ port, distRoot });
 } catch (error) {
-  console.error(error instanceof StartupError ? error.message : `Could not start Codex Monitor: ${String(error)}`);
+  console.error(error instanceof StartupError ? error.message : `Could not start TokenBeacon: ${String(error)}`);
   process.exit(1);
 }
 

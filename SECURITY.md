@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Codex Monitor is in early development. Security fixes are made on the `main`
+TokenBeacon is in early development. Security fixes are made on the `main`
 branch and included in the next release.
 
 ## Reporting a vulnerability
@@ -17,7 +17,7 @@ Please include:
 
 - a description of the problem and its impact,
 - steps to reproduce,
-- the Codex Monitor version or commit, Node.js version and operating system.
+- the TokenBeacon version or commit, Node.js version and operating system.
 
 **Do not include your own Codex data** (conversation titles, project names,
 database files, session logs or `auth.json`). Synthetic examples are enough.
@@ -27,7 +27,7 @@ We aim to acknowledge reports within a week.
 
 ## Security model
 
-Codex Monitor is a single-user tool that runs on your own machine.
+TokenBeacon is a single-user tool that runs on your own machine.
 
 In scope:
 
