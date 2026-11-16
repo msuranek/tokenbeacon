@@ -140,9 +140,11 @@ function addThread(thread: DemoThread, projectId: string | null, cwd: string): v
         type: "token_count",
         info: {
           total_token_usage: {
+            // Same shape as Codex: total = input + output; cached input is part
+            // of input and reasoning is part of output.
             input_tokens: Math.round(thread.totalTokens * 0.96),
             cached_input_tokens: Math.round(thread.totalTokens * 0.81),
-            output_tokens: Math.round(thread.totalTokens * 0.03),
+            output_tokens: thread.totalTokens - Math.round(thread.totalTokens * 0.96),
             reasoning_output_tokens: Math.round(thread.totalTokens * 0.01),
             total_tokens: thread.totalTokens,
           },
