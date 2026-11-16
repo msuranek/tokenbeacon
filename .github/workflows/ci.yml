@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: macOS / Node ${{ matrix.node }}
+    # v0.1.0 supports macOS only. macos-26 runs on Apple silicon and ships zstd.
+    runs-on: macos-26
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18.0 is the minimum supported version; 24 and 26 are current LTS lines.
+        node: ["22.18.0", "24", "26"]
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Show versions
+        run: |
+          node --version
+          npm --version
+          zstd --version
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        # Synthetic fixtures only; the runner has no Codex data.
+        run: npm test
+
+      - name: Build dashboard
+        run: npm run build
+
+      - name: Smoke test npm start
+        # Starts the real server against an empty CODEX_HOME and checks that it
+        # serves the dashboard and reports the missing data instead of crashing.
+        env:
+          CODEX_HOME: ${{ runner.temp }}/empty-codex-home
+          CODEX_MONITOR_PORT: "4310"
+        run: |
+          mkdir -p "$CODEX_HOME"
+          npm start > "$RUNNER_TEMP/server.log" 2>&1 &
+          server_pid=$!
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4310/api/health > "$RUNNER_TEMP/health.json" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/server.log"
+          cat "$RUNNER_TEMP/health.json"
+          grep -q '"status":"degraded"' "$RUNNER_TEMP/health.json"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4310/)" = "200"
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: attacker.example:4310' http://127.0.0.1:4310/api/snapshot)" = "421"
+          kill "$server_pid" || true
