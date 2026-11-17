@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatCompactTokens, formatExactTokens } from "./format.ts";
+import { formatAge, formatCompactTokens, formatExactTokens } from "./format.ts";
 import type {
   LimitWindow,
   MetricValue,
@@ -134,9 +134,17 @@ export function App() {
                     ? "Offline – showing last data"
                     : "Offline"}
           </div>
-          <div className="freshness">
-            {generatedAge === null ? "Waiting for data" : `Updated ${formatAge(generatedAge)}`}
-          </div>
+          {snapshot && generatedAge !== null && Number.isFinite(generatedAge) ? (
+            <div
+              className="freshness"
+              title={`TokenBeacon last read the local Codex data at ${formatTime(snapshot.generatedAt)} and checks again every ${POLL_INTERVAL_MS / 1_000} seconds. Limit cards show separately when Codex itself recorded the limits.`}
+            >
+              <span aria-hidden="true">Data checked {formatAge(generatedAge)}</span>
+              <span className="sr-only">Codex data last checked at {formatTime(snapshot.generatedAt)}</span>
+            </div>
+          ) : (
+            <div className="freshness">Waiting for data</div>
+          )}
         </div>
       </header>
 
@@ -292,10 +300,10 @@ function LimitCard({ label, metric }: { label: string; metric: MetricValue<Limit
   const description = pending
     ? `${label}: loading`
     : expired
-      ? `${label}: awaiting fresh data. Previous window ended at ${endedAt ?? "an unknown time"}. Last recorded at ${recordedAt ?? "an unknown time"}.`
+      ? `${label}: awaiting fresh data. Previous window ended at ${endedAt ?? "an unknown time"}. Last recorded by Codex at ${recordedAt ?? "an unknown time"}.`
       : used === null
         ? `${label}: unavailable`
-        : `${label}: ${used}% used, ${left}% left${recordedAt ? `, recorded at ${recordedAt}` : ""}`;
+        : `${label}: ${used}% used, ${left}% left${recordedAt ? `, recorded by Codex at ${recordedAt}` : ""}`;
 
   return (
     <article className={expired ? "limit-card limit-card--expired" : "limit-card"} aria-busy={pending} aria-label={description}>
@@ -323,7 +331,7 @@ function LimitCard({ label, metric }: { label: string; metric: MetricValue<Limit
               : `${left}% left${value?.resetsAt ? ` · resets ${formatReset(value.resetsAt)}` : ""}`}
       </div>
       {!pending && recordedAt && (
-        <div className="limit-recorded" aria-hidden="true">Last recorded at {recordedAt}</div>
+        <div className="limit-recorded" aria-hidden="true">Recorded by Codex at {recordedAt}</div>
       )}
     </article>
   );
@@ -915,7 +923,11 @@ function HelpPanel() {
           </p>
           <p>
             Codex reports limits only while you use it, so they’re always <strong>last known</strong>. Each card
-            shows when they were last recorded.
+            shows when Codex <strong>recorded</strong> them.
+          </p>
+          <p>
+            That’s different from <strong>Data checked</strong> at the top right: when TokenBeacon last read
+            Codex’s local data. It checks every few seconds, but the limits change only when Codex records new ones.
           </p>
           <p>
             When a window has ended and Codex hasn’t reported the new one yet, the card shows{" "}
@@ -1000,6 +1012,10 @@ function formatAbsoluteDate(value: string): string {
   return new Intl.DateTimeFormat(DATE_LOCALE, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(value));
 }
 
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat(DATE_LOCALE, { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value));
+}
+
 function formatReset(value: string): string {
   return new Intl.DateTimeFormat(DATE_LOCALE, { weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
@@ -1014,11 +1030,6 @@ function formatClock(value: string): string {
     return `${new Intl.DateTimeFormat(DATE_LOCALE, { weekday: "short" }).format(date)} ${time}`;
   }
   return `${new Intl.DateTimeFormat(DATE_LOCALE, { day: "numeric", month: "short" }).format(date)} ${time}`;
-}
-
-function formatAge(milliseconds: number): string {
-  if (milliseconds < 1_500) return "just now";
-  return `${Math.floor(milliseconds / 1_000)} s ago`;
 }
 
 function formatDuration(milliseconds: number): string {

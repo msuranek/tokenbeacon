@@ -38,6 +38,17 @@ export function formatCompactTokens(value: number): string {
   return `${sign}${text}${UNITS[index].suffix}`;
 }
 
+/** Age of the last data read: "just now", "12 s ago", "3 min ago", "2 h ago". */
+export function formatAge(milliseconds: number): string {
+  if (!Number.isFinite(milliseconds)) return "at an unknown time";
+  if (milliseconds < 1_500) return "just now";
+  const seconds = Math.floor(milliseconds / 1_000);
+  if (seconds < 60) return `${seconds} s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)} h ago`;
+}
+
 function shortNumber(scaled: number): string {
   const oneDecimal = Math.round(scaled * 10) / 10;
   if (oneDecimal < 100) return oneDecimal.toFixed(1).replace(/\.0$/, "");

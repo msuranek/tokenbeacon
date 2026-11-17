@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatCompactTokens, formatExactTokens } from "../src/client/format.ts";
+import { formatAge, formatCompactTokens, formatExactTokens } from "../src/client/format.ts";
 
 test("compact token counts use K/M/B with at most one decimal", () => {
   const cases: Array<[number, string]> = [
@@ -44,4 +44,21 @@ test("exact token counts keep every digit with en-US separators", () => {
   assert.equal(formatExactTokens(950), "950");
   assert.equal(formatExactTokens(7_512_345), "7,512,345");
   assert.equal(formatExactTokens(1_234_567_890_123), "1,234,567,890,123");
+});
+
+test("data age reads naturally from seconds to hours", () => {
+  const cases: Array<[number, string]> = [
+    [0, "just now"],
+    [1_499, "just now"],
+    [1_500, "1 s ago"],
+    [59_999, "59 s ago"],
+    [60_000, "1 min ago"],
+    [3_599_999, "59 min ago"],
+    [3_600_000, "1 h ago"],
+    [26 * 3_600_000, "26 h ago"],
+    [Number.NaN, "at an unknown time"],
+  ];
+  for (const [value, expected] of cases) {
+    assert.equal(formatAge(value), expected, `formatAge(${value})`);
+  }
 });

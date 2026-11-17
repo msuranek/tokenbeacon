@@ -141,6 +141,9 @@ network.
   limits only while you use it, so they are always *last known*. When a window
   has ended and no newer data exists, the card shows **Awaiting fresh data**
   instead of the old percentage. It updates after your next Codex request.
+- **Data checked** (top right) is when TokenBeacon last read the local Codex
+  data; it checks every 5 seconds. **Recorded by Codex** on the limit cards is
+  when Codex itself saved the limits, which can be much earlier.
 - **Project assignment.** Most threads are linked to a project by Codex. If a
   thread has no link, the monitor matches its working folder to a project
   folder; such matches are shown as *Matched by folder (estimate)* in the

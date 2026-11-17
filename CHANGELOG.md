@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Total tokens is now explained as cumulative usage for the whole thread
   (every turn, including cached input), not the current context: in the
   column tooltip, the thread details panel and “How to read these numbers”.
+- The header shows “Data checked … ago” instead of “Updated … ago”, and limit
+  cards say “Recorded by Codex at …”, so the time TokenBeacon read the data is
+  no longer confused with the time Codex recorded the limits. Ages over a
+  minute read as minutes or hours, and screen readers get the exact time.
 
 ## 0.1.0 - 2026-11-16
 
