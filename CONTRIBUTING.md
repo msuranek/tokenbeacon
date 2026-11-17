@@ -89,8 +89,9 @@ Before opening a pull request:
 
 ## Reporting bugs
 
-Open an issue with the steps to reproduce, your operating system, Node.js and
-Codex versions, and the output of `http://127.0.0.1:4310/api/health`. That
-output contains only status codes. Please do not attach your Codex data.
+Open an issue with the **Bug report** template. It asks for the steps to
+reproduce, your operating system, Node.js and Codex versions, and the output of
+`http://127.0.0.1:4310/api/health`. That output contains only status codes.
+Please do not attach your Codex data. Ideas go into a **Feature request**.
 
 For security problems, follow [SECURITY.md](SECURITY.md) instead.

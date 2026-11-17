@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/msuranek/tokenbeacon/security/advisories/new
+    about: Please report security problems privately, as described in SECURITY.md. Don't open a public issue.
+  - name: Security policy
+    url: https://github.com/msuranek/tokenbeacon/blob/main/SECURITY.md
+    about: What is in scope and what to include in a report.

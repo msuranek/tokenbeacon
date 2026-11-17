@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- GitHub issue templates for bug reports and feature requests. Security
+  problems are routed to private vulnerability reporting.
+
 ### Changed
 
 - The threads table shows total tokens in a short form (for example `7.5M`).
