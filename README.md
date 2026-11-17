@@ -10,7 +10,7 @@ using only the data Codex already stores on your machine.
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
-**Status:** v0.1.0 – early and experimental. **macOS only.**
+**Status:** v0.1.1 – early and experimental. **macOS only.**
 
 ![TokenBeacon dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
 
@@ -71,7 +71,7 @@ is inside `sessions/` or `archived_sessions/`.
 
 ## Requirements
 
-- **macOS.** v0.1.0 supports macOS only; Linux and Windows are not supported.
+- **macOS.** v0.1.x supports macOS only; Linux and Windows are not supported.
   Tested on macOS 26 with Apple silicon. Intel Macs are expected to work but
   are untested.
 - **Node.js 22.18 or newer**, ideally the current LTS release. Install it from
