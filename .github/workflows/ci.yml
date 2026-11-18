@@ -15,13 +15,15 @@ concurrency:
 
 jobs:
   test:
-    name: macOS / Node ${{ matrix.node }}
-    # macos-26 runs on Apple silicon. Windows runners are added in M1-B4.
-    runs-on: macos-26
-    timeout-minutes: 15
+    name: ${{ matrix.os == 'windows-latest' && 'Windows' || 'macOS' }} / Node ${{ matrix.node }}
+    # macos-26 runs on Apple silicon; windows-latest is Windows Server with the
+    # same Node.js lines. Runners are free for public repositories.
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
+        os: [macos-26, windows-latest]
         # 22.18.0 is the minimum supported version; 24 and 26 are current LTS lines.
         node: ["22.18.0", "24", "26"]
 
@@ -55,7 +57,8 @@ jobs:
       - name: Build dashboard
         run: npm run build
 
-      - name: Smoke test npm start
+      - name: Smoke test npm start (macOS)
+        if: runner.os != 'Windows'
         # Starts the real server against an empty CODEX_HOME and checks that it
         # serves the dashboard and reports the missing data instead of crashing.
         env:
@@ -75,3 +78,31 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4310/)" = "200"
           test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: attacker.example:4310' http://127.0.0.1:4310/api/snapshot)" = "421"
           kill "$server_pid" || true
+
+      - name: Smoke test npm start (Windows, PowerShell)
+        if: runner.os == 'Windows'
+        # Same checks as on macOS, run the way a Windows user starts TokenBeacon.
+        shell: pwsh
+        run: |
+          $env:CODEX_HOME = Join-Path $env:RUNNER_TEMP "empty-codex-home"
+          $env:TOKENBEACON_PORT = "4310"
+          New-Item -ItemType Directory -Force -Path $env:CODEX_HOME | Out-Null
+          $log = Join-Path $env:RUNNER_TEMP "server.log"
+          $server = Start-Process -FilePath "npm.cmd" -ArgumentList "start" -NoNewWindow -PassThru `
+            -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+          $health = $null
+          for ($attempt = 0; $attempt -lt 60 -and -not $health; $attempt++) {
+            try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:4310/api/health" } catch { Start-Sleep -Seconds 1 }
+          }
+          Get-Content $log, "$log.err" -ErrorAction SilentlyContinue
+          try {
+            if (-not $health) { throw "server did not answer /api/health" }
+            $health | ConvertTo-Json -Depth 5
+            if ($health.status -ne "degraded") { throw "expected status degraded, got $($health.status)" }
+            $index = Invoke-WebRequest -Uri "http://127.0.0.1:4310/" -UseBasicParsing
+            if ($index.StatusCode -ne 200) { throw "dashboard returned $($index.StatusCode)" }
+            $foreign = & curl.exe -s -o NUL -w "%{http_code}" -H "Host: attacker.example:4310" "http://127.0.0.1:4310/api/snapshot"
+            if ($foreign -ne "421") { throw "foreign Host returned $foreign, expected 421" }
+          } finally {
+            & taskkill.exe /PID $server.Id /T /F | Out-Null
+          }
