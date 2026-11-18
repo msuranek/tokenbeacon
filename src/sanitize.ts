@@ -8,6 +8,11 @@ import { homedir } from "node:os";
  * are rendered as text by React, so this is not HTML escaping. It removes
  * characters that can spoof or corrupt the UI, redacts the user's home
  * directory, and bounds the size of each value.
+ *
+ * Home redaction replaces only the home folder itself with "~" and keeps the
+ * rest of the text exactly as written, including its separators: on macOS
+ * "/Users/jane/repo/a.ts" becomes "~/repo/a.ts", on Windows
+ * "C:\Users\Jane\repo/a.ts" becomes "~\repo/a.ts".
  */
 
 export const MAX_TITLE_LENGTH = 300;

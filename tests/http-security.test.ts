@@ -502,7 +502,12 @@ describe("local HTTP API security", () => {
       ];
       const byId = new Map(threads.map((thread) => [thread.id, thread]));
       const pathTitle = byId.get(THREAD_UUID)!.title;
-      assert.equal(pathTitle, "Fix bug in ~/secret-work/client-acme/packages/api/index.ts second line");
+      // Only the home folder is replaced; the rest of the path stays as written,
+      // with the platform's own separators (path.join built it).
+      const relativeCwd = ["secret-work", "client-acme", "packages", "api"].join(path.sep);
+      assert.equal(pathTitle, `Fix bug in ~${path.sep}${relativeCwd}/index.ts second line`);
+      assert.ok(!pathTitle.includes(HOME), "home folder leaked into a title");
+      assert.ok(!pathTitle.toLowerCase().includes(HOME.toLowerCase()), "home folder leaked (other letter case)");
       const longTitle = byId.get("javascript:alert(1)//")!.title;
       assert.ok(Array.from(longTitle).length <= 300);
       assert.ok(longTitle.endsWith("…"));
@@ -564,5 +569,24 @@ describe("display text sanitizer", () => {
     assert.equal(sanitizeDisplayText("abcdef", 4, "-"), "abc…");
     assert.equal(sanitizeDisplayText("👨‍👩‍👧 rodina", 50, "-"), "👨‍👩‍👧 rodina");
     assert.equal(sanitizeDisplayText("<img src=x onerror=alert(1)>", 50, "-"), "<img src=x onerror=alert(1)>");
+  });
+
+  test("redacts the home folder the same way on macOS and Windows, keeping the rest as written", () => {
+    // The title shape from the HTTP fixture, with each platform's home folder.
+    const title = (home: string, sep: string) =>
+      `Fix bug in ${[home, "secret-work", "client-acme", "packages", "api"].join(sep)}/index.ts\nsecond line\u0000⁦`;
+    assert.equal(
+      sanitizeDisplayText(title("/Users/someone", "/"), 300, "-", "/Users/someone"),
+      "Fix bug in ~/secret-work/client-acme/packages/api/index.ts second line",
+    );
+    const windowsHome = "C:\\Users\\Some One";
+    const windows = sanitizeDisplayText(title(windowsHome, "\\"), 300, "-", windowsHome);
+    assert.equal(windows, "Fix bug in ~\\secret-work\\client-acme\\packages\\api/index.ts second line");
+    assert.ok(!/some one|c:[\\/]+users/i.test(windows));
+    // Other spellings of the same Windows home are removed too.
+    for (const spelling of ["c:\\users\\some one", "C:/Users/Some One", "\\\\?\\C:\\Users\\Some One"]) {
+      const result = sanitizeDisplayText(`${spelling}\\secret-work`, 300, "-", windowsHome);
+      assert.equal(result, "~\\secret-work", spelling);
+    }
   });
 });
