@@ -78,7 +78,7 @@ memory with Node.js's built-in zstd support, with a size limit per file.
 - **Node.js 22.18 or newer**, ideally the current LTS release. Install it from
   [nodejs.org](https://nodejs.org/) or with Homebrew: `brew install node`.
   The app uses the built-in `node:sqlite` module and runs TypeScript directly.
-  CI tests Node.js 22.18, 24 and 26.
+  CI tests Node.js 24 on macOS and Windows.
 - **Git**, for example from the Xcode Command Line Tools: `xcode-select --install`.
 - **Codex** (the desktop app or the CLI) used at least once on this Mac.
 

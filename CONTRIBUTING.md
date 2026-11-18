@@ -40,8 +40,8 @@ npm run bench      # optional: refresh benchmark against your own Codex data
   fixtures in `tests/helpers/fixture-codex-home.ts`.
 - For screenshots and manual testing, use fictional data from
   `node scripts/create-demo-data.ts <empty-directory>`.
-- CI runs typecheck, tests, build and a start-up smoke test on macOS with
-  Node.js 22.18, 24 and 26.
+- CI runs typecheck, tests, build and a start-up smoke test on macOS and
+  Windows with Node.js 24.
 - Add a test for every bug fix and for every new data source or field.
 - Security-relevant code (HTTP validation, path handling, sanitizing) needs
   tests for the rejected cases too.

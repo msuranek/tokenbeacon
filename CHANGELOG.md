@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CODEX_HOME` also accepts `~\`.
 - The notice for unreadable session logs no longer claims that Codex has no
   log; it says the logs are missing, damaged or outside the Codex data folder.
-- CI also runs on Windows (Node.js 22.18, 24 and 26), including a PowerShell
-  smoke test of `npm start`.
+- CI runs on macOS and Windows with Node.js 24, including a PowerShell
+  smoke test of `npm start` on Windows. Node.js 22.18 or newer stays
+  supported.
 
 ### Fixed
 

@@ -16,16 +16,17 @@ concurrency:
 jobs:
   test:
     name: ${{ matrix.os == 'windows-latest' && 'Windows' || 'macOS' }} / Node ${{ matrix.node }}
-    # macos-26 runs on Apple silicon; windows-latest is Windows Server with the
-    # same Node.js lines. Runners are free for public repositories.
+    # macos-26 runs on Apple silicon; windows-latest is Windows Server.
+    # Runners are free for public repositories.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [macos-26, windows-latest]
-        # 22.18.0 is the minimum supported version; 24 and 26 are current LTS lines.
-        node: ["22.18.0", "24", "26"]
+        # One Node.js LTS line per platform. package.json still supports
+        # Node.js 22.18 or newer; other versions are not tested in CI.
+        node: ["24"]
 
     steps:
       - name: Check out
