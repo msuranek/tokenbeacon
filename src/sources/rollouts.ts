@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { recordRateLimits } from "../limits.ts";
+import { currentPlatform, isInsidePath, normalizeWin32Path, pathApi, type PathPlatform } from "../paths.ts";
 import type { RawUsage, RolloutTelemetry } from "../types.ts";
 
 interface CacheEntry {
@@ -32,7 +33,8 @@ export interface RolloutIssues {
 
 /** Rollouts live only in these directories below the Codex home. */
 export const ROLLOUT_DIRECTORIES = ["sessions", "archived_sessions"] as const;
-const ROLLOUT_FILE_NAME = /^rollout-[^/\\]+\.jsonl(\.zst)?$/;
+// No separators and no ":" (a Windows drive or NTFS alternate data stream).
+const ROLLOUT_FILE_NAME = /^rollout-[^/\\:]+\.jsonl(\.zst)?$/;
 
 type Resolution =
   | { kind: "ok"; path: string }
@@ -159,24 +161,58 @@ function emptyIssues(): RolloutIssues {
   return { missing: 0, outsideStorage: 0, invalidName: 0, zstdMissing: 0, failed: 0 };
 }
 
+export interface ResolveOptions {
+  platform?: PathPlatform;
+  /** Defaults to the OS realpath (`realpathSync.native` on Windows). */
+  realpath?: (value: string) => string;
+  isFile?: (value: string) => boolean;
+}
+
 /**
  * Confines a database-provided rollout path to the Codex rollout storage.
  *
- * The path (relative paths are resolved against the Codex home) is resolved
- * with realpath, which removes `..` segments and follows every symlink,
- * including the file itself. Only a regular `rollout-*.jsonl[.zst]` file whose
- * real location lies inside the real location of one of ROLLOUT_DIRECTORIES is
- * accepted. Returns the real path, which is what gets opened.
+ * On Windows the path is first normalized: an extended-length `\\?\` prefix
+ * is removed, and device or volume namespace paths (`\\.\…`, `\\?\GLOBALROOT…`)
+ * are refused. The path (relative paths are resolved against the Codex home) is
+ * then resolved with realpath, which removes `..` segments and follows every
+ * symlink or junction, including the file itself. Only a regular
+ * `rollout-*.jsonl[.zst]` file whose real location lies inside the real
+ * location of one of ROLLOUT_DIRECTORIES is accepted; on Windows the
+ * comparison ignores letter case. Returns the real path, which is what gets
+ * opened.
  */
-export function resolveRolloutPath(codexHome: string, requestedPath: string): Resolution {
+export function resolveRolloutPath(
+  codexHome: string,
+  requestedPath: string,
+  options: ResolveOptions = {},
+): Resolution {
+  const platform = options.platform ?? currentPlatform();
+  const api = pathApi(platform);
+  const realpath = options.realpath ?? (platform === "win32" ? realpathSync.native : realpathSync);
+  const isFile = options.isFile ?? ((value: string) => statSync(value).isFile());
+
   if (typeof requestedPath !== "string" || requestedPath.length === 0 || requestedPath.includes("\0")) {
     return { kind: "invalidName" };
   }
-  const home = path.resolve(codexHome);
-  const requested = path.resolve(home, requestedPath);
+  const home = api.resolve(codexHome);
+  // On Windows, namespace prefixes are stripped (or refused) before relative
+  // paths are resolved against the Codex home.
+  // Drive-relative (`C:file`) and rooted (`\file`) Windows paths depend on
+  // per-process state and are refused outright.
+  if (platform === "win32" && /^(?:[A-Za-z]:(?![\\/])|[\\/](?![\\/]))/.test(requestedPath)) {
+    return { kind: "outsideStorage" };
+  }
+  const absolute =
+    platform === "win32"
+      ? api.isAbsolute(requestedPath)
+        ? normalizeWin32Path(requestedPath)
+        : normalizeWin32Path(api.resolve(home, requestedPath))
+      : api.resolve(home, requestedPath);
+  if (absolute === null) return { kind: "outsideStorage" };
+  const requested = absolute;
   const realRoots = ROLLOUT_DIRECTORIES.flatMap((directory) => {
     try {
-      return [realpathSync(path.join(home, directory))];
+      return [realpath(api.join(home, directory))];
     } catch {
       return [];
     }
@@ -185,30 +221,20 @@ export function resolveRolloutPath(codexHome: string, requestedPath: string): Re
   for (const candidate of candidates) {
     let real: string;
     try {
-      real = realpathSync(candidate);
+      real = realpath(candidate);
     } catch {
       continue; // Missing (or dangling symlink); try the compressed variant.
     }
-    if (!realRoots.some((root) => isInside(root, real))) return { kind: "outsideStorage" };
-    if (!ROLLOUT_FILE_NAME.test(path.basename(real))) return { kind: "invalidName" };
+    if (!realRoots.some((root) => isInsidePath(root, real, platform))) return { kind: "outsideStorage" };
+    if (!ROLLOUT_FILE_NAME.test(api.basename(real))) return { kind: "invalidName" };
     try {
-      if (!statSync(real).isFile()) return { kind: "invalidName" };
+      if (!isFile(real)) return { kind: "invalidName" };
     } catch {
       continue;
     }
     return { kind: "ok", path: real };
   }
   return { kind: "missing" };
-}
-
-function isInside(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative !== "" &&
-    relative !== ".." &&
-    !relative.startsWith(`..${path.sep}`) &&
-    !path.isAbsolute(relative)
-  );
 }
 
 function emptyTelemetry(sourceKind: "jsonl" | "jsonl.zst"): RolloutTelemetry {

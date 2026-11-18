@@ -60,6 +60,8 @@ Out of scope:
   `Referrer-Policy: no-referrer` and `Cross-Origin-Resource-Policy: same-origin`.
 - SQLite databases are opened read-only with `query_only` enforced.
 - Session logs are read only from inside the Codex `sessions/` and
-  `archived_sessions/` folders after resolving symlinks.
+  `archived_sessions/` folders after resolving symlinks. On Windows the
+  comparison ignores letter case, the `\\?\` prefix is normalized and device
+  paths (`\\.\…`, `\\?\GLOBALROOT…`) are refused.
 - The API never returns file paths, and errors are reported as stable codes.
 - No telemetry and no outbound network connections.

@@ -3,6 +3,7 @@ import { createReadStream, existsSync, realpathSync, statSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { MonitorSnapshot } from "./types.ts";
+import { isInsidePath } from "./paths.ts";
 
 /**
  * Local HTTP surface of TokenBeacon.
@@ -277,13 +278,13 @@ function serveFrontend(distRoot: string, url: string, response: ServerResponse):
 
 function resolveInside(root: string, requested: string): string | null {
   const candidate = path.resolve(root, requested);
-  if (!candidate.startsWith(`${root}${path.sep}`)) return null;
+  if (!isInsidePath(root, candidate)) return null;
   if (!existsSync(candidate)) return null;
   try {
     // Follow symlinks and re-check, so a link inside dist cannot expose other files.
     const realRoot = realpathSync(root);
     const realCandidate = realpathSync(candidate);
-    if (!realCandidate.startsWith(`${realRoot}${path.sep}`)) return null;
+    if (!isInsidePath(realRoot, realCandidate)) return null;
     return statSync(realCandidate).isFile() ? realCandidate : null;
   } catch {
     return null;

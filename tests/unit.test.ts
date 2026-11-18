@@ -18,10 +18,10 @@ test("path assignment uses directory boundaries and the longest root", () => {
     { id: "parent", rootPaths: ["/work/app"] },
     { id: "child", rootPaths: ["/work/app/packages/monitor"] },
   ];
-  assert.equal(assignByLongestRoot("/work/app/packages/monitor/src", projects), "child");
-  assert.equal(assignByLongestRoot("/work/application", projects), null);
-  assert.equal(assignByLongestRoot("relative/path", projects), null);
-  assert.equal(assignByLongestRoot("", projects), null);
+  assert.equal(assignByLongestRoot("/work/app/packages/monitor/src", projects, "posix"), "child");
+  assert.equal(assignByLongestRoot("/work/application", projects, "posix"), null);
+  assert.equal(assignByLongestRoot("relative/path", projects, "posix"), null);
+  assert.equal(assignByLongestRoot("", projects, "posix"), null);
 });
 
 describe("CODEX_HOME resolution", () => {

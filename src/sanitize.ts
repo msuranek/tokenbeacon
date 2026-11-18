@@ -45,9 +45,35 @@ export function sanitizeDisplayText(
 
 export function redactHome(text: string, home: string = homedir()): string {
   if (!home || home === "/" || home.length < 2) return text;
+  const windowsHome = windowsHomePattern(home);
+  if (windowsHome) return text.replace(windowsHome, "~");
   const normalizedHome = home.replace(/[\\/]+$/, "");
   if (!normalizedHome) return text;
   return text.split(normalizedHome).join("~");
+}
+
+/**
+ * For a Windows home such as `C:\Users\Jane Doe`, matches every common way the
+ * same folder is written in text, ignoring letter case:
+ * `C:\Users\Jane Doe`, `c:/users/jane doe`, JSON-escaped `C:\\Users\\Jane Doe`,
+ * `\\?\C:\Users\Jane Doe`, Git Bash `/c/Users/Jane Doe` and WSL
+ * `/mnt/c/Users/Jane Doe`. Returns null for anything that is not a drive path.
+ */
+function windowsHomePattern(home: string): RegExp | null {
+  const match = /^([A-Za-z]):[\\/]+(.+?)[\\/]*$/.exec(home);
+  if (!match) return null;
+  const drive = match[1];
+  const segments = match[2].split(/[\\/]+/).filter(Boolean);
+  if (segments.length === 0) return null;
+  const separator = "(?:\\\\{1,2}|/)"; // \, \\ (escaped) or /
+  const body = segments.map(escapeRegExp).join(separator);
+  const native = `(?:\\\\{1,2}\\?\\\\{1,2})?${escapeRegExp(drive)}:${separator}${body}`;
+  const posixStyle = `(?:/mnt)?/${escapeRegExp(drive)}/${segments.map(escapeRegExp).join("/")}`;
+  return new RegExp(`(?:${native}|${posixStyle})`, "gi");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function isUuid(value: unknown): value is string {

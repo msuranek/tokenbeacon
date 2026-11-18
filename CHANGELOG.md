@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Fixed
+
+- Groundwork for Windows support (Windows is not supported yet): session log
+  paths written with the `\\?\` prefix are accepted, device paths such as
+  `\\.\…` are refused, project folders are matched regardless of letter case
+  and slash style, and the home folder is hidden in titles in every common
+  Windows spelling.
+
 ## 0.1.1 - 2026-11-17
 
 ### Added
