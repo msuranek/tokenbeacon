@@ -590,13 +590,6 @@ function describeSourceProblems(snapshot: MonitorSnapshot): { blocking: boolean;
         return [reason, Number(count) || 0];
       }),
     ) as Record<string, number>;
-    if (counts.zstdMissing) {
-      problems.push({
-        key: "zstd",
-        code: rollouts.detail,
-        text: `${plural(counts.zstdMissing, "archived thread")} can’t be read because zstd is not installed. Install it with: brew install zstd`,
-      });
-    }
     const other = (counts.missing ?? 0) + (counts.noPath ?? 0) + (counts.failed ?? 0) +
       (counts.outsideStorage ?? 0) + (counts.invalidName ?? 0);
     if (other > 0) {

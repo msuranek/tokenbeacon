@@ -133,9 +133,5 @@ export function describeDataProblems(snapshot: MonitorSnapshot): string[] {
     if (source.source === "appServer" || source.state === "ok") continue;
     lines.push(`Note: ${source.source} is ${source.state}${source.detail ? ` (${source.detail})` : ""}.`);
   }
-  const rollouts = health.get("rollouts");
-  if (rollouts?.detail?.includes("zstdMissing")) {
-    lines.push("Install zstd to read archived threads, e.g. `brew install zstd`.");
-  }
   return lines;
 }

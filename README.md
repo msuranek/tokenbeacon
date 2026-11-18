@@ -67,7 +67,8 @@ From your Codex data folder (`CODEX_HOME`, default `~/.codex`):
 | `sessions/**/rollout-*.jsonl[.zst]`, `archived_sessions/**/…` | model, token, context and limit data |
 
 Session logs are only read if their real location (after resolving symlinks)
-is inside `sessions/` or `archived_sessions/`.
+is inside `sessions/` or `archived_sessions/`. Compressed logs are unpacked in
+memory with Node.js's built-in zstd support, with a size limit per file.
 
 ## Requirements
 
@@ -80,14 +81,11 @@ is inside `sessions/` or `archived_sessions/`.
   CI tests Node.js 22.18, 24 and 26.
 - **Git**, for example from the Xcode Command Line Tools: `xcode-select --install`.
 - **Codex** (the desktop app or the CLI) used at least once on this Mac.
-- **zstd** to read archived threads: `brew install zstd`. Without it, archived
-  threads show token and context values as unavailable.
 
 Check your setup:
 
 ```sh
 node --version   # v22.18.0 or newer
-zstd --version
 ls ~/.codex      # Codex data folder (or your CODEX_HOME)
 ```
 
@@ -180,7 +178,6 @@ table.
 | “TokenBeacon cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). Check with `node --version`. |
 | `command not found: npm` | Node.js is not installed or not on your `PATH`. Install it from nodejs.org or with `brew install node`, then open a new Terminal window. |
 | “Open in Codex” does nothing | Install and open the Codex desktop app once so macOS registers `codex://` links. |
-| Archived threads show N/A | Install zstd: `brew install zstd`. |
 | Many values show N/A | Your Codex version may store data differently. The notice above the table explains which data is missing. |
 | A limit shows “Awaiting fresh data” | The usage window has ended. Make any request in Codex; the card updates automatically. |
 | “The local server isn't running” | Start it with `npm start`; the page reconnects automatically. |

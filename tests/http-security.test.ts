@@ -115,7 +115,7 @@ const fakeRollouts = {
     return new Map<string, RolloutTelemetry | null>(paths.map((p) => [p, null]));
   },
   stats: () => ({ entries: 0, hits: 0, misses: 0, decompressions: 0 }),
-  lastIssues: () => ({ missing: 0, outsideStorage: 0, invalidName: 0, zstdMissing: 0, failed: 0 }),
+  lastIssues: () => ({ missing: 0, outsideStorage: 0, invalidName: 0, failed: 0 }),
 } as unknown as RolloutCache;
 
 async function fixtureSnapshot(): Promise<MonitorSnapshot> {

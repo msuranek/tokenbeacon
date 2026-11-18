@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as sqlite from "node:sqlite";
+import { zstdCompressSync } from "node:zlib";
 
 /**
  * Builds synthetic, anonymous Codex home directories for tests.
@@ -43,8 +43,12 @@ export function createTempRoot(): { root: string; cleanup(): void } {
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-export function hasZstd(): boolean {
-  return spawnSync("zstd", ["--version"], { stdio: "ignore" }).status === 0;
+/** Replaces `file` with `file.zst` (Node's built-in zstd, like Codex's archives). */
+export function compressToZstd(file: string): string {
+  const target = `${file}.zst`;
+  writeFileSync(target, zstdCompressSync(readFileSync(file)));
+  unlinkSync(file);
+  return target;
 }
 
 export function rolloutLines(options: {

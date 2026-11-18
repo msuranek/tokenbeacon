@@ -1,7 +1,7 @@
 import { createReadStream, promises as fs, realpathSync, statSync } from "node:fs";
-import { spawn } from "node:child_process";
 import path from "node:path";
-import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
+import { createZstdDecompress } from "node:zlib";
 import { recordRateLimits } from "../limits.ts";
 import { currentPlatform, isInsidePath, normalizeWin32Path, pathApi, type PathPlatform } from "../paths.ts";
 import type { RawUsage, RolloutTelemetry } from "../types.ts";
@@ -12,6 +12,8 @@ interface CacheEntry {
   mtimeMs: number;
   offset: number;
   carry: string;
+  /** The read stopped inside an over-long line; skip until its newline. */
+  skipping: boolean;
   telemetry: RolloutTelemetry;
 }
 
@@ -27,7 +29,6 @@ export interface RolloutIssues {
   missing: number;
   outsideStorage: number;
   invalidName: number;
-  zstdMissing: number;
   failed: number;
 }
 
@@ -35,6 +36,20 @@ export interface RolloutIssues {
 export const ROLLOUT_DIRECTORIES = ["sessions", "archived_sessions"] as const;
 // No separators and no ":" (a Windows drive or NTFS alternate data stream).
 const ROLLOUT_FILE_NAME = /^rollout-[^/\\:]+\.jsonl(\.zst)?$/;
+
+/**
+ * Lines longer than this are skipped without being kept in memory. Codex
+ * writes token counts on short lines; the longest real line seen (an embedded
+ * image) was about 15 MB.
+ */
+export const MAX_LINE_CHARS = 64 * 1024 * 1024;
+
+/**
+ * A compressed rollout that expands beyond this is not read further and counts
+ * as failed (protection against decompression bombs). The largest real
+ * rollout seen was about 110 MB uncompressed.
+ */
+export const MAX_DECOMPRESSED_BYTES = 1024 * 1024 * 1024;
 
 type Resolution =
   | { kind: "ok"; path: string }
@@ -128,6 +143,7 @@ export class RolloutCache {
         mtimeMs: info.mtimeMs,
         offset: info.size,
         carry: "",
+        skipping: false,
         telemetry,
       });
       return telemetry;
@@ -141,16 +157,16 @@ export class RolloutCache {
       info.size > cached.size;
     const telemetry = canContinue ? cached.telemetry : emptyTelemetry("jsonl");
     const start = canContinue ? cached.offset : 0;
-    const prefix = canContinue ? cached.carry : "";
-    const carry = await parseJsonlRange(resolvedPath, start, prefix, (line) =>
-      applyLine(telemetry, line),
-    );
+    const splitter = new LineSplitter((line) => applyLine(telemetry, line));
+    if (canContinue) splitter.restore(cached.carry, cached.skipping);
+    await parseJsonlRange(resolvedPath, start, splitter);
     this.entries.set(resolvedPath, {
       path: resolvedPath,
       size: info.size,
       mtimeMs: info.mtimeMs,
       offset: info.size,
-      carry,
+      carry: splitter.carry,
+      skipping: splitter.skipping,
       telemetry,
     });
     return telemetry;
@@ -158,7 +174,7 @@ export class RolloutCache {
 }
 
 function emptyIssues(): RolloutIssues {
-  return { missing: 0, outsideStorage: 0, invalidName: 0, zstdMissing: 0, failed: 0 };
+  return { missing: 0, outsideStorage: 0, invalidName: 0, failed: 0 };
 }
 
 export interface ResolveOptions {
@@ -252,51 +268,94 @@ function emptyTelemetry(sourceKind: "jsonl" | "jsonl.zst"): RolloutTelemetry {
   };
 }
 
-async function parseJsonlRange(
-  filePath: string,
-  start: number,
-  prefix: string,
-  onLine: (line: string) => void,
-): Promise<string> {
-  if ((await fs.stat(filePath)).size === start) return prefix;
-  const stream = createReadStream(filePath, { start, encoding: "utf8" });
-  let buffer = prefix;
-  for await (const chunk of stream) {
-    buffer += chunk;
-    let newline = buffer.indexOf("\n");
+/**
+ * Splits text into lines. A line longer than MAX_LINE_CHARS is dropped as soon
+ * as it exceeds the limit, so memory stays bounded; reading resumes after its
+ * newline. Carry and skip state can be saved and restored for incremental reads.
+ */
+class LineSplitter {
+  carry = "";
+  skipping = false;
+  private readonly onLine: (line: string) => void;
+  private readonly maxLineChars: number;
+
+  constructor(onLine: (line: string) => void, maxLineChars = MAX_LINE_CHARS) {
+    this.onLine = onLine;
+    this.maxLineChars = maxLineChars;
+  }
+
+  restore(carry: string, skipping: boolean): void {
+    this.carry = carry;
+    this.skipping = skipping;
+  }
+
+  push(text: string): void {
+    let start = 0;
+    let newline = text.indexOf("\n");
     while (newline >= 0) {
-      const line = buffer.slice(0, newline);
-      buffer = buffer.slice(newline + 1);
-      if (line) onLine(line);
-      newline = buffer.indexOf("\n");
+      if (this.skipping) {
+        this.skipping = false;
+      } else {
+        const line = this.carry + text.slice(start, newline);
+        if (line.length <= this.maxLineChars && line) this.onLine(line);
+      }
+      this.carry = "";
+      start = newline + 1;
+      newline = text.indexOf("\n", start);
+    }
+    if (this.skipping) return;
+    this.carry += text.slice(start);
+    if (this.carry.length > this.maxLineChars) {
+      this.carry = "";
+      this.skipping = true;
     }
   }
-  return buffer;
+
+  /** End of input: a final line without a newline is still a line. */
+  finish(): void {
+    if (!this.skipping && this.carry && this.carry.length <= this.maxLineChars) this.onLine(this.carry);
+    this.carry = "";
+    this.skipping = false;
+  }
 }
 
-async function parseZstdLines(filePath: string, onLine: (line: string) => void): Promise<void> {
-  const child = spawn("zstd", ["-q", "-d", "-c", "--", filePath], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const completion = new Promise<number | null>((resolve, reject) => {
-    child.once("error", (error: NodeJS.ErrnoException) =>
-      reject(error.code === "ENOENT" ? new RolloutReadError("zstdMissing") : error),
-    );
-    child.once("close", resolve);
-  });
-  // Observe the rejection immediately; it is awaited after the output is consumed.
-  completion.catch(() => undefined);
-  let stderr = "";
-  child.stderr.setEncoding("utf8");
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  for await (const line of lines) {
-    if (line) onLine(line);
+/** Reads a growing plain rollout from `start`; the unfinished last line stays in the splitter. */
+async function parseJsonlRange(filePath: string, start: number, splitter: LineSplitter): Promise<void> {
+  if ((await fs.stat(filePath)).size === start) return;
+  const stream = createReadStream(filePath, { start, encoding: "utf8" });
+  for await (const chunk of stream) splitter.push(chunk as string);
+}
+
+/**
+ * Streams a zstd-compressed rollout through Node's built-in decompressor (no
+ * external binary). Stops with an error when the output exceeds
+ * MAX_DECOMPRESSED_BYTES.
+ */
+export async function parseZstdLines(
+  filePath: string,
+  onLine: (line: string) => void,
+  limits: { maxDecompressedBytes?: number; maxLineChars?: number } = {},
+): Promise<void> {
+  const maxBytes = limits.maxDecompressedBytes ?? MAX_DECOMPRESSED_BYTES;
+  const splitter = new LineSplitter(onLine, limits.maxLineChars ?? MAX_LINE_CHARS);
+  const decoder = new StringDecoder("utf8");
+  const input = createReadStream(filePath);
+  const decompressor = createZstdDecompress();
+  input.once("error", (error) => decompressor.destroy(error));
+  input.pipe(decompressor);
+  let total = 0;
+  try {
+    for await (const chunk of decompressor) {
+      total += (chunk as Buffer).length;
+      if (total > maxBytes) throw new RolloutReadError("failed");
+      splitter.push(decoder.write(chunk as Buffer));
+    }
+    splitter.push(decoder.end());
+    splitter.finish();
+  } finally {
+    input.destroy();
+    decompressor.destroy();
   }
-  const exitCode = await completion;
-  if (exitCode !== 0) throw new Error(`zstd failed (${exitCode}): ${stderr.trim()}`);
 }
 
 function applyLine(telemetry: RolloutTelemetry, line: string): void {

@@ -16,7 +16,7 @@ concurrency:
 jobs:
   test:
     name: macOS / Node ${{ matrix.node }}
-    # v0.1.0 supports macOS only. macos-26 runs on Apple silicon and ships zstd.
+    # macos-26 runs on Apple silicon. Windows runners are added in M1-B4.
     runs-on: macos-26
     timeout-minutes: 15
     strategy:
@@ -41,7 +41,6 @@ jobs:
         run: |
           node --version
           npm --version
-          zstd --version
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund

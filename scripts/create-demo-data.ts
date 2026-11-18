@@ -9,10 +9,10 @@
  * empty; it never touches a real Codex installation. It is a development tool
  * and is not used by the application itself.
  */
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import * as sqlite from "node:sqlite";
+import { zstdCompressSync } from "node:zlib";
 
 type Writable = {
   exec(sql: string): void;
@@ -108,7 +108,6 @@ const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").
 mkdirSync(path.join(home, "sqlite"), { recursive: true });
 const sessions = path.join(home, "sessions", "2026", "11", "16");
 mkdirSync(sessions, { recursive: true });
-const hasZstd = spawnSync("zstd", ["--version"], { stdio: "ignore" }).status === 0;
 
 const state = new Database(path.join(home, "state_5.sqlite"));
 state.exec(`CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT, position INTEGER, updated_at_ms INTEGER)`);
@@ -164,12 +163,12 @@ function addThread(thread: DemoThread, projectId: string | null, cwd: string): v
   ];
   writeFileSync(rollout, `${lines.map((line) => JSON.stringify(line)).join("\n")}\n`);
   let storedPath = rollout;
-  if (thread.archived && hasZstd) {
+  if (thread.archived) {
     // Archived threads are compressed like Codex does; the database keeps the .jsonl path.
-    spawnSync("zstd", ["-q", "--rm", rollout, "-o", `${rollout}.zst`]);
+    writeFileSync(`${rollout}.zst`, zstdCompressSync(readFileSync(rollout)));
+    unlinkSync(rollout);
     storedPath = rollout;
   }
-  if (thread.archived && !hasZstd) unlinkSync(rollout);
 
   const linked = thread.linked ?? true;
   state
@@ -195,5 +194,5 @@ state.close();
 history.close();
 desktop.close();
 
-console.log(`Demo Codex data created (${threadIndex} fictional threads${hasZstd ? "" : ", zstd not found: archived threads omitted"}).`);
+console.log(`Demo Codex data created (${threadIndex} fictional threads).`);
 console.log(`Start the dashboard with: CODEX_HOME=${JSON.stringify(home)} npm start`);

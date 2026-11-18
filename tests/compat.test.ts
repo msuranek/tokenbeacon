@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { request as httpRequest } from "node:http";
@@ -16,12 +14,13 @@ import { describe, test } from "node:test";
 import { createMonitorServer, listenLoopback } from "../src/http-server.ts";
 import { SnapshotService } from "../src/snapshot-service.ts";
 import { LocalDataSource } from "../src/sources/local-data.ts";
-import { RolloutCache, resolveRolloutPath } from "../src/sources/rollouts.ts";
+import { MAX_DECOMPRESSED_BYTES, parseZstdLines, RolloutCache, resolveRolloutPath } from "../src/sources/rollouts.ts";
+import { zstdCompressSync } from "node:zlib";
 import type { MonitorSnapshot, SourceHealth, ThreadView } from "../src/types.ts";
 import {
   createFixtureCodexHome,
+  compressToZstd,
   createTempRoot,
-  hasZstd,
   IDS,
   NOW_MS,
   rolloutLines,
@@ -345,36 +344,74 @@ describe("rollout path confinement (OSR-010)", () => {
     assert.equal(resolveRolloutPath(home, path.join(home, "sessions", "rollout-a.jsonl")).kind, "ok");
   });
 
-  test("compressed rollout fallback (.jsonl -> .jsonl.zst)", { skip: !hasZstd() && "zstd not installed" }, async (t) => {
+  test("compressed rollout fallback (.jsonl -> .jsonl.zst) uses Node's built-in zstd", async (t) => {
     const fixture = createFixtureCodexHome();
     t.after(fixture.cleanup);
     const sessions = path.join(fixture.codexHome, "sessions", "2026", "11", "16");
     const plain = path.join(sessions, "rollout-catalog.jsonl");
-    assert.equal(spawnSync("zstd", ["-q", plain, "-o", `${plain}.zst`]).status, 0);
-    unlinkSync(plain);
-    const cache = new RolloutCache(fixture.codexHome);
-    const result = await cache.readMany([plain]);
-    const telemetry = result.get(plain);
-    assert.equal(telemetry?.sourceKind, "jsonl.zst");
-    assert.equal(telemetry?.tokenCountTotal?.total_tokens, 2_000);
+    compressToZstd(plain);
+    const savedPath = process.env.PATH;
+    process.env.PATH = path.join(fixture.root, "empty-bin"); // no external zstd binary
+    try {
+      const cache = new RolloutCache(fixture.codexHome);
+      const result = await cache.readMany([plain]);
+      const telemetry = result.get(plain);
+      assert.equal(telemetry?.sourceKind, "jsonl.zst");
+      assert.equal(telemetry?.tokenCountTotal?.total_tokens, 2_000);
+      assert.deepEqual(cache.lastIssues(), { missing: 0, outsideStorage: 0, invalidName: 0, failed: 0 });
+    } finally {
+      process.env.PATH = savedPath;
+    }
   });
 
-  test("missing zstd binary is reported as zstdMissing", async (t) => {
+  test("corrupt compressed rollout counts as failed and does not break the refresh", async (t) => {
     const fixture = createFixtureCodexHome();
     t.after(fixture.cleanup);
     const sessions = path.join(fixture.codexHome, "sessions", "2026", "11", "16");
     const compressed = path.join(sessions, "rollout-fake.jsonl.zst");
     writeFileSync(compressed, "not really zstd");
-    const savedPath = process.env.PATH;
-    process.env.PATH = path.join(fixture.root, "empty-bin");
-    try {
-      const cache = new RolloutCache(fixture.codexHome);
-      const result = await cache.readMany([compressed]);
-      assert.equal(result.get(compressed), null);
-      assert.equal(cache.lastIssues().zstdMissing, 1);
-    } finally {
-      process.env.PATH = savedPath;
-    }
+    const cache = new RolloutCache(fixture.codexHome);
+    const result = await cache.readMany([compressed]);
+    assert.equal(result.get(compressed), null);
+    assert.equal(cache.lastIssues().failed, 1);
+  });
+
+  test("decompression stops at the output limit (zstd bomb)", async (t) => {
+    const { root, cleanup } = createTempRoot();
+    t.after(cleanup);
+    const bomb = path.join(root, "rollout-bomb.jsonl.zst");
+    // 8 MiB of newlines compress to a few hundred bytes.
+    writeFileSync(bomb, zstdCompressSync(Buffer.alloc(8 * 1024 * 1024, 0x0a)));
+    let lines = 0;
+    await assert.rejects(
+      parseZstdLines(bomb, () => (lines += 1), { maxDecompressedBytes: 1024 * 1024 }),
+      (error: Error) => error.message === "failed",
+    );
+    assert.equal(lines, 0);
+    assert.ok(MAX_DECOMPRESSED_BYTES >= 512 * 1024 * 1024, "default limit leaves room for real rollouts");
+  });
+
+  test("over-long lines are skipped without stopping the rest of the rollout", async (t) => {
+    const { root, cleanup } = createTempRoot();
+    t.after(cleanup);
+    const file = path.join(root, "rollout-long.jsonl.zst");
+    const text = `{"a":1}\n${"x".repeat(5_000)}\n{"b":"ž"}\n{"c":3}`; // last line without newline
+    writeFileSync(file, zstdCompressSync(Buffer.from(text, "utf8")));
+    const seen: string[] = [];
+    await parseZstdLines(file, (line) => seen.push(line), { maxLineChars: 1_000 });
+    assert.deepEqual(seen, ['{"a":1}', '{"b":"ž"}', '{"c":3}']);
+  });
+
+  test("multi-byte characters split across decompressed chunks stay intact", async (t) => {
+    const { root, cleanup } = createTempRoot();
+    t.after(cleanup);
+    const file = path.join(root, "rollout-utf8.jsonl.zst");
+    const line = JSON.stringify({ title: "příliš žluťoučký kůň 🐎".repeat(20_000) });
+    writeFileSync(file, zstdCompressSync(Buffer.from(`${line}\n`, "utf8")));
+    const seen: string[] = [];
+    await parseZstdLines(file, (value) => seen.push(value));
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0], line);
   });
 });
 

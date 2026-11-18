@@ -63,5 +63,7 @@ Out of scope:
   `archived_sessions/` folders after resolving symlinks. On Windows the
   comparison ignores letter case, the `\\?\` prefix is normalized and device
   paths (`\\.\…`, `\\?\GLOBALROOT…`) are refused.
+- Compressed session logs are decompressed in-process with a 1 GiB output
+  limit per file; lines over 64 MiB are skipped.
 - The API never returns file paths, and errors are reported as stable codes.
 - No telemetry and no outbound network connections.

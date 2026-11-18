@@ -19,7 +19,7 @@ Every change must keep these properties:
 
 ## Development setup
 
-Requirements: macOS, Node.js 22.18 or newer and `zstd` (`brew install zstd`).
+Requirements: macOS and Node.js 22.18 or newer.
 
 ```sh
 npm install

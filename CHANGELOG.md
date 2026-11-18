@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- Compressed (archived) session logs are read with Node.js's built-in zstd
+  support. The external `zstd` tool is no longer needed. Reading stops for a
+  file that expands beyond 1 GiB, and single lines over 64 MiB are skipped, so
+  a damaged or hostile file cannot exhaust memory.
+
 ### Fixed
 
 - Groundwork for Windows support (Windows is not supported yet): session log
