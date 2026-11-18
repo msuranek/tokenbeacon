@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsePort } from "./http-server.ts";
+import { startCommandLines } from "./platform-hints.ts";
 import { startMonitor, StartupError } from "./start.ts";
 
 const distRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
@@ -9,7 +10,9 @@ let port: number;
 try {
   port = parsePort(process.env.TOKENBEACON_PORT);
 } catch (error) {
-  console.error(`${error instanceof Error ? error.message : String(error)} (e.g. TOKENBEACON_PORT=4310)`);
+  console.error(
+    [`${error instanceof Error ? error.message : String(error)}, e.g.`, ...startCommandLines("TOKENBEACON_PORT", "4310").map((line) => `  ${line}`)].join("\n"),
+  );
   process.exit(1);
 }
 

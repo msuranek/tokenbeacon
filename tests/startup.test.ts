@@ -7,7 +7,8 @@ import { describe, test } from "node:test";
 import { ensureFrontendBuild, frontendBuildState } from "../src/frontend-build.mjs";
 import { SnapshotService } from "../src/snapshot-service.ts";
 import { LocalDataSource } from "../src/sources/local-data.ts";
-import { describeDataProblems, startMonitor, StartupError } from "../src/start.ts";
+import { describeDataProblems, describeListenError, startMonitor, StartupError } from "../src/start.ts";
+import { startCommandLines } from "../src/platform-hints.ts";
 import type { MonitorSnapshot } from "../src/types.ts";
 import { createFixtureCodexHome, createTempRoot } from "./helpers/fixture-codex-home.ts";
 
@@ -170,6 +171,20 @@ describe("data problem hints", () => {
     assert.ok(!lines.join("\n").includes(root));
   });
 
+  test("CODEX_HOME hint is written for the user's shell", async (t) => {
+    const { root, cleanup } = createTempRoot();
+    t.after(cleanup);
+    const snapshot = await new SnapshotService(new LocalDataSource(path.join(root, "nope"))).refresh();
+    const mac = describeDataProblems(snapshot, "posix").join("\n");
+    assert.match(mac, /CODEX_HOME=\/path\/to\/\.codex npm start/);
+    assert.ok(!/\$env:|set "/.test(mac));
+    const windows = describeDataProblems(snapshot, "win32").join("\n");
+    assert.match(windows, /PowerShell: \$env:CODEX_HOME = "D:\\path\\to\\\.codex"; npm start/);
+    assert.match(windows, /cmd: +set "CODEX_HOME=D:\\path\\to\\\.codex" && npm start/);
+    assert.ok(!windows.includes("CODEX_HOME=/path"));
+    for (const text of [mac, windows]) assert.ok(!text.includes(root));
+  });
+
   test("healthy fixture produces no blocking hint", async (t) => {
     const fixture = createFixtureCodexHome();
     t.after(fixture.cleanup);
@@ -240,5 +255,26 @@ describe("dashboard build detection", () => {
     const warnings: string[] = [];
     assert.equal(ensureFrontendBuild(root, { log: () => undefined, warn: (line) => warnings.push(line) }), "stale");
     assert.equal(warnings.length, 1);
+  });
+});
+
+describe("start command hints", () => {
+  test("one POSIX line, or PowerShell and cmd lines on Windows", () => {
+    assert.deepEqual(startCommandLines("TOKENBEACON_PORT", "4311", "posix"), ["TOKENBEACON_PORT=4311 npm start"]);
+    assert.deepEqual(startCommandLines("TOKENBEACON_PORT", "4311", "win32"), [
+      'PowerShell: $env:TOKENBEACON_PORT = "4311"; npm start',
+      'cmd:        set "TOKENBEACON_PORT=4311" && npm start',
+    ]);
+  });
+
+  test("port errors suggest the next port in the user's shell", () => {
+    const inUse = Object.assign(new Error("listen EADDRINUSE"), { code: "EADDRINUSE" });
+    assert.match(describeListenError(inUse, 4310, "posix").message, /TOKENBEACON_PORT=4311 npm start/);
+    const windows = describeListenError(inUse, 4310, "win32").message;
+    assert.match(windows, /\$env:TOKENBEACON_PORT = "4311"; npm start/);
+    assert.match(windows, /set "TOKENBEACON_PORT=4311" && npm start/);
+    assert.ok(!windows.includes("TOKENBEACON_PORT=4311 npm start"));
+    const denied = Object.assign(new Error("listen EACCES"), { code: "EACCES" });
+    assert.match(describeListenError(denied, 80, "win32").message, /above 1024[\s\S]*\$env:TOKENBEACON_PORT = "4310"/);
   });
 });

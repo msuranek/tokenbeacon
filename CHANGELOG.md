@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support. The external `zstd` tool is no longer needed. Reading stops for a
   file that expands beyond 1 GiB, and single lines over 64 MiB are skipped, so
   a damaged or hostile file cannot exhaust memory.
+- Terminal hints for the port and `CODEX_HOME` show PowerShell and cmd
+  commands on Windows instead of POSIX shell syntax. On Windows,
+  `CODEX_HOME` also accepts `~\`.
 
 ### Fixed
 

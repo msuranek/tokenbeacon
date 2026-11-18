@@ -4,6 +4,8 @@ import { createMonitorServer, listenLoopback } from "./http-server.ts";
 import { redactHome } from "./sanitize.ts";
 import { SnapshotService } from "./snapshot-service.ts";
 import type { MonitorSnapshot } from "./types.ts";
+import { currentPlatform, type PathPlatform } from "./paths.ts";
+import { exampleCodexHome, startCommandLines } from "./platform-hints.ts";
 
 export interface StartOptions {
   port: number;
@@ -87,20 +89,26 @@ export async function startMonitor(options: StartOptions): Promise<RunningMonito
   };
 }
 
-export function describeListenError(error: unknown, port: number): StartupError {
+export function describeListenError(
+  error: unknown,
+  port: number,
+  platform: PathPlatform = currentPlatform(),
+): StartupError {
   const code = (error as NodeJS.ErrnoException)?.code ?? "UNKNOWN";
   if (code === "EADDRINUSE") {
     return new StartupError(
       code,
       `Port ${port} is already in use.\n` +
         `TokenBeacon may already be running: open http://127.0.0.1:${port}\n` +
-        `Otherwise stop the other program or choose another port, e.g. TOKENBEACON_PORT=${port === 65_535 ? port - 1 : port + 1} npm start`,
+        "Otherwise stop the other program or choose another port, e.g.\n" +
+        indent(startCommandLines("TOKENBEACON_PORT", String(port === 65_535 ? port - 1 : port + 1), platform)),
     );
   }
   if (code === "EACCES") {
     return new StartupError(
       code,
-      `Not allowed to listen on port ${port}. Choose a port above 1024, e.g. TOKENBEACON_PORT=4310 npm start`,
+      `Not allowed to listen on port ${port}. Choose a port above 1024, e.g.\n` +
+        indent(startCommandLines("TOKENBEACON_PORT", "4310", platform)),
     );
   }
   if (code === "EADDRNOTAVAIL") {
@@ -111,14 +119,17 @@ export function describeListenError(error: unknown, port: number): StartupError 
 }
 
 /** Terminal hints for missing or partial data. Codes only, no private values. */
-export function describeDataProblems(snapshot: MonitorSnapshot): string[] {
+export function describeDataProblems(
+  snapshot: MonitorSnapshot,
+  platform: PathPlatform = currentPlatform(),
+): string[] {
   const health = new Map(snapshot.sourceHealth.map((source) => [source.source, source]));
   const home = health.get("codexHome");
   if (home && home.state !== "ok") {
     return [
       `No Codex data directory found (${home.detail}).`,
       "Install and open Codex at least once, or point CODEX_HOME to your Codex data directory, e.g.",
-      "  CODEX_HOME=/path/to/.codex npm start",
+      ...startCommandLines("CODEX_HOME", exampleCodexHome(platform), platform).map((line) => `  ${line}`),
     ];
   }
   const state = health.get("stateDb");
@@ -134,4 +145,8 @@ export function describeDataProblems(snapshot: MonitorSnapshot): string[] {
     lines.push(`Note: ${source.source} is ${source.state}${source.detail ? ` (${source.detail})` : ""}.`);
   }
   return lines;
+}
+
+function indent(lines: string[]): string {
+  return lines.map((line) => `  ${line}`).join("\n");
 }

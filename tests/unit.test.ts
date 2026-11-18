@@ -38,6 +38,19 @@ describe("CODEX_HOME resolution", () => {
     assert.equal(resolveCodexHome({ CODEX_HOME: "~/alt-codex" }, home, cwd), path.join(home, "alt-codex"));
     assert.equal(resolveCodexHome({ CODEX_HOME: "~" }, home, cwd), home);
   });
+  test("Windows: %USERPROFILE%\\.codex by default, ~\\ and drive paths", () => {
+    const winHome = "C:\\Users\\Jane Doe";
+    const winCwd = "C:\\Users\\Jane Doe\\tokenbeacon";
+    const resolve = (value?: string) =>
+      resolveCodexHome(value === undefined ? {} : { CODEX_HOME: value }, winHome, winCwd, "win32");
+    assert.equal(resolve(), "C:\\Users\\Jane Doe\\.codex");
+    assert.equal(resolve("~\\alt-codex"), "C:\\Users\\Jane Doe\\alt-codex");
+    assert.equal(resolve("~/alt-codex"), "C:\\Users\\Jane Doe\\alt-codex");
+    assert.equal(resolve("D:\\codex-data"), "D:\\codex-data");
+    assert.equal(resolve("profiles\\work"), "C:\\Users\\Jane Doe\\tokenbeacon\\profiles\\work");
+    // On macOS "~\\" is an ordinary (odd) relative name, as before.
+    assert.equal(resolveCodexHome({ CODEX_HOME: "~\\x" }, "/Users/jane", "/work", "posix"), "/work/~\\x");
+  });
 });
 
 describe("Node.js runtime check", () => {
