@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -332,6 +333,45 @@ describe("rollout path confinement (OSR-010)", () => {
     assert.equal(kind(path.join(sessions, "rollout-auth.jsonl")), "outsideStorage");
   });
 
+  test(
+    "Windows: real \\\\?\\ paths inside storage are read, others refused",
+    { skip: process.platform !== "win32" && "Windows-only: needs real \\\\?\\ (namespaced) paths" },
+    async (t) => {
+      const fixture = createFixtureCodexHome();
+      t.after(fixture.cleanup);
+      const home = fixture.codexHome;
+      const sessions = path.join(home, "sessions", "2026", "11", "16");
+      const namespaced = (file: string) => path.toNamespacedPath(realpathSync.native(file));
+
+      // The form Codex stores on Windows (Rust canonicalize): \\?\C:\…\sessions\…
+      const explicit = namespaced(path.join(sessions, "rollout-explicit.jsonl"));
+      assert.ok(explicit.startsWith("\\\\?\\"), "test needs a namespaced path");
+      const resolved = resolveRolloutPath(home, explicit);
+      assert.equal(resolved.kind, "ok");
+
+      // Compressed fallback with a namespaced .jsonl path, read end to end.
+      const catalog = path.join(sessions, "rollout-catalog.jsonl");
+      const catalogRequested = namespaced(catalog);
+      compressToZstd(catalog);
+      const cache = new RolloutCache(home);
+      const result = await cache.readMany([explicit, catalogRequested]);
+      assert.equal(result.get(explicit)?.tokenCountTotal?.total_tokens, 1_000);
+      assert.equal(result.get(catalogRequested)?.sourceKind, "jsonl.zst");
+      assert.equal(result.get(catalogRequested)?.tokenCountTotal?.total_tokens, 2_000);
+      assert.deepEqual(cache.lastIssues(), { missing: 0, outsideStorage: 0, invalidName: 0, failed: 0 });
+
+      // Namespaced paths outside rollout storage stay refused.
+      writeFileSync(path.join(home, "auth.json"), '{"token":"fixture-secret"}');
+      writeFileSync(path.join(home, "rollout-at-root.jsonl"), rolloutLines({}));
+      assert.equal(resolveRolloutPath(home, namespaced(path.join(home, "auth.json"))).kind, "outsideStorage");
+      assert.equal(resolveRolloutPath(home, namespaced(path.join(home, "rollout-at-root.jsonl"))).kind, "outsideStorage");
+      assert.equal(resolveRolloutPath(home, namespaced(path.join(fixture.outsideDir, "rollout-outside.jsonl"))).kind, "outsideStorage");
+      assert.equal(resolveRolloutPath(home, `${explicit.slice(0, -"rollout-explicit.jsonl".length)}..\\..\\..\\..\\auth.json`).kind, "outsideStorage");
+      // Device namespace for the same allowed file is refused.
+      assert.equal(resolveRolloutPath(home, `\\\\.\\${explicit.slice(4)}`).kind, "outsideStorage");
+    },
+  );
+
   test("sessions directory symlinked elsewhere is followed only within its real target", (t) => {
     const { root, cleanup } = createTempRoot();
     t.after(cleanup);
@@ -416,7 +456,13 @@ describe("rollout path confinement (OSR-010)", () => {
 });
 
 describe("read-only guarantee", () => {
-  test("refresh changes no byte, size or mtime and creates no files, even on read-only files", async (t) => {
+  test(
+    "refresh changes no byte, size or mtime and creates no files, even on read-only files",
+    // chmod 0o555 has no effect on Windows directories, so there the test would
+    // pass without proving anything. The read-only SQLite and fingerprint
+    // checks for Windows run in the other tests.
+    { skip: process.platform === "win32" && "POSIX-only: chmod cannot make Windows folders read-only" },
+    async (t) => {
     const fixture = createFixtureCodexHome();
     t.after(() => {
       // Restore permissions so cleanup can delete the tree.
@@ -448,7 +494,8 @@ describe("read-only guarantee", () => {
     assert.equal(health(first, "stateDb").state, "ok");
     assert.equal(allThreads(first).length, 5);
     assert.deepEqual(fingerprint(fixture.codexHome), before);
-  });
+    },
+  );
 });
 
 describe("server with an empty installation", () => {
