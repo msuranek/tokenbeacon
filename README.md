@@ -10,7 +10,7 @@ using only the data Codex already stores on your machine.
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
-**Status:** v0.1.1 – early and experimental. **macOS only.**
+**Status:** v0.2.0 – early and experimental. Runs on **macOS** and **Windows 11**.
 
 ![TokenBeacon dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
 
@@ -57,7 +57,8 @@ TokenBeacon is built to be privacy-first and strictly read-only.
 
 ### What it reads
 
-From your Codex data folder (`CODEX_HOME`, default `~/.codex`):
+From your Codex data folder (`CODEX_HOME`, default `~/.codex` on macOS and
+`%USERPROFILE%\.codex` on Windows):
 
 | File | Used for |
 | --- | --- |
@@ -66,30 +67,51 @@ From your Codex data folder (`CODEX_HOME`, default `~/.codex`):
 | `sqlite/codex.db` | the Codex app's thread list (which threads are visible) |
 | `sessions/**/rollout-*.jsonl[.zst]`, `archived_sessions/**/…` | model, token, context and limit data |
 
-Session logs are only read if their real location (after resolving symlinks)
-is inside `sessions/` or `archived_sessions/`. Compressed logs are unpacked in
+Session logs are only read if their real location (after resolving symlinks
+and, on Windows, junctions and `\\?\` path prefixes) is inside `sessions/` or
+`archived_sessions/`. Compressed logs are unpacked in
 memory with Node.js's built-in zstd support, with a size limit per file.
 
 ## Requirements
 
-- **macOS.** v0.1.x supports macOS only; Linux and Windows are not supported.
-  Tested on macOS 26 with Apple silicon. Intel Macs are expected to work but
-  are untested.
-- **Node.js 22.18 or newer**, ideally the current LTS release. Install it from
-  [nodejs.org](https://nodejs.org/) or with Homebrew: `brew install node`.
-  The app uses the built-in `node:sqlite` module and runs TypeScript directly.
-  CI tests Node.js 24 on macOS and Windows.
-- **Git**, for example from the Xcode Command Line Tools: `xcode-select --install`.
-- **Codex** (the desktop app or the CLI) used at least once on this Mac.
+- **macOS or Windows 11.**
+  - macOS: tested on macOS 26 with Apple silicon. Intel Macs are expected to
+    work but are untested.
+  - Windows: tested on Windows 11 with the Codex desktop app. Use PowerShell
+    or Command Prompt.
+  - Linux and WSL are not supported.
+- **Node.js 22.18 or newer**, ideally the current LTS release. The app uses the
+  built-in `node:sqlite` module and runs TypeScript directly. CI tests
+  Node.js 24 on macOS and Windows.
+  - macOS: [nodejs.org](https://nodejs.org/) or Homebrew: `brew install node`.
+  - Windows: [nodejs.org](https://nodejs.org/) or
+    `winget install OpenJS.NodeJS.LTS`.
+- **Git.**
+  - macOS: for example the Xcode Command Line Tools: `xcode-select --install`.
+  - Windows: [git-scm.com](https://git-scm.com/) or `winget install Git.Git`.
+- **Codex** (the desktop app or the CLI) used at least once on this computer.
 
-Check your setup:
+No other tools are needed: compressed session logs are read with Node.js's
+built-in zstd support.
+
+Check your setup on macOS:
 
 ```sh
 node --version   # v22.18.0 or newer
 ls ~/.codex      # Codex data folder (or your CODEX_HOME)
 ```
 
+On Windows (PowerShell):
+
+```powershell
+node --version                          # v22.18.0 or newer
+Test-Path "$env:USERPROFILE\.codex"     # True (or check your CODEX_HOME)
+```
+
 ## Installation
+
+The same commands work in the macOS Terminal and in Windows PowerShell or
+Command Prompt:
 
 ```sh
 git clone https://github.com/msuranek/tokenbeacon.git
@@ -115,13 +137,32 @@ packages are build tools; the server itself uses only Node.js built-ins.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `CODEX_HOME` | `~/.codex` | Location of your Codex data folder. Codex uses `~/.codex` unless you set `CODEX_HOME` for it; use the same value here. |
+| `CODEX_HOME` | `~/.codex` (macOS), `%USERPROFILE%\.codex` (Windows) | Location of your Codex data folder. Codex uses this folder unless you set `CODEX_HOME` for it; use the same value here. |
 | `TOKENBEACON_PORT` | `4310` | Local port for the dashboard. |
+
+macOS (Terminal):
 
 ```sh
 CODEX_HOME=/path/to/codex-data npm start
 TOKENBEACON_PORT=4311 npm start
 ```
+
+Windows PowerShell (the variable stays set for that PowerShell window):
+
+```powershell
+$env:CODEX_HOME = "D:\path\to\codex-data"; npm start
+$env:TOKENBEACON_PORT = "4311"; npm start
+```
+
+Windows Command Prompt:
+
+```bat
+set "CODEX_HOME=D:\path\to\codex-data" && npm start
+set "TOKENBEACON_PORT=4311" && npm start
+```
+
+When TokenBeacon cannot start, its message shows the matching command for your
+system.
 
 The server always binds to `127.0.0.1`. This is intentional and not
 configurable: the dashboard has no login, so it must not be exposed to a
@@ -157,8 +198,8 @@ table.
   monitor detects the schema and degrades gracefully (missing values become
   *Unavailable*), but new Codex versions may need updates.
 - **Limits are only as fresh as the last local Codex request.** Usage from
-  other devices, the web or cloud tasks is not visible until Codex on this Mac
-  records new limit data.
+  other devices, the web or cloud tasks is not visible until Codex on this
+  computer records new limit data.
 - **Project assignment by folder is an estimate** and can be wrong for nested
   or moved folders.
 - **Thread visibility** follows the Codex app's thread list. If that list is
@@ -174,10 +215,11 @@ table.
 | Problem | What to do |
 | --- | --- |
 | “Codex data not found” | Open Codex once, or set `CODEX_HOME` to your Codex data folder. |
-| “Port 4310 is already in use” | TokenBeacon may already be running: open <http://127.0.0.1:4310>. Otherwise start with `TOKENBEACON_PORT=4311 npm start`. |
+| “Port 4310 is already in use” | TokenBeacon may already be running: open <http://127.0.0.1:4310>. Otherwise use another port, e.g. `TOKENBEACON_PORT=4311 npm start` (macOS) or `$env:TOKENBEACON_PORT = "4311"; npm start` (PowerShell). |
 | “TokenBeacon cannot run on this Node.js runtime” | Install Node.js 22.18 or newer (LTS recommended). Check with `node --version`. |
-| `command not found: npm` | Node.js is not installed or not on your `PATH`. Install it from nodejs.org or with `brew install node`, then open a new Terminal window. |
-| “Open in Codex” does nothing | Install and open the Codex desktop app once so macOS registers `codex://` links. |
+| `command not found: npm` (macOS) or “npm is not recognized” (Windows) | Node.js is not installed or not on your `PATH`. Install it (see Requirements), then open a new Terminal or PowerShell window. |
+| PowerShell: “running scripts is disabled on this system” when running `npm` | Your PowerShell execution policy blocks `npm.ps1`. Run `npm.cmd install` and `npm.cmd start` instead, or use Command Prompt. |
+| “Open in Codex” does nothing | Install and open the Codex desktop app once so the system registers `codex://` links. |
 | Many values show N/A | Your Codex version may store data differently. The notice above the table explains which data is missing. |
 | A limit shows “Awaiting fresh data” | The usage window has ended. Make any request in Codex; the card updates automatically. |
 | “The local server isn't running” | Start it with `npm start`; the page reconnects automatically. |
@@ -219,7 +261,7 @@ src/sources/            read-only SQLite and rollout readers
 src/client/             React dashboard
 tests/                  automated tests (synthetic fixtures)
 scripts/                development tools (fictional demo data)
-.github/workflows/      CI on macOS
+.github/workflows/      CI on macOS and Windows
 ```
 
 ## Security

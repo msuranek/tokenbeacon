@@ -19,7 +19,13 @@ Every change must keep these properties:
 
 ## Development setup
 
-Requirements: macOS and Node.js 22.18 or newer.
+Requirements: macOS or Windows 11 and Node.js 22.18 or newer. Linux and WSL
+are not supported yet.
+
+Code that handles file paths must work on both systems. Windows rules are
+tested on every OS with `path.win32` (see `tests/windows-paths.test.ts`);
+tests that need real Windows behaviour skip themselves elsewhere with a
+reason.
 
 ```sh
 npm install
