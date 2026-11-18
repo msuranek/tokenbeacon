@@ -5,7 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.2.0 - 2026-11-18
+
+TokenBeacon now runs on Windows 11 as well as macOS. Tested on a real
+Windows 11 computer with the Codex desktop app.
+
+### Added
+
+- Windows 11 support: Codex data is read from `%USERPROFILE%\.codex` (or
+  `CODEX_HOME`), threads are matched to projects, “Open in Codex” opens the
+  thread in the Codex app, and the home folder is hidden in titles.
+- Windows installation and PowerShell/Command Prompt examples in the README.
+- CI on Windows, including a PowerShell smoke test of `npm start`.
 
 ### Changed
 
@@ -13,22 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   support. The external `zstd` tool is no longer needed. Reading stops for a
   file that expands beyond 1 GiB, and single lines over 64 MiB are skipped, so
   a damaged or hostile file cannot exhaust memory.
-- Terminal hints for the port and `CODEX_HOME` show PowerShell and cmd
-  commands on Windows instead of POSIX shell syntax. On Windows,
+- Terminal hints for the port and `CODEX_HOME` show PowerShell and Command
+  Prompt commands on Windows instead of POSIX shell syntax. On Windows,
   `CODEX_HOME` also accepts `~\`.
 - The notice for unreadable session logs no longer claims that Codex has no
   log; it says the logs are missing, damaged or outside the Codex data folder.
-- CI runs on macOS and Windows with Node.js 24, including a PowerShell
-  smoke test of `npm start` on Windows. Node.js 22.18 or newer stays
+- CI runs on macOS and Windows with Node.js 24. Node.js 22.18 or newer stays
   supported.
 
 ### Fixed
 
-- Groundwork for Windows support (Windows is not supported yet): session log
-  paths written with the `\\?\` prefix are accepted, device paths such as
-  `\\.\…` are refused, project folders are matched regardless of letter case
-  and slash style, and the home folder is hidden in titles in every common
-  Windows spelling.
+- Session log paths that Codex writes with the Windows `\\?\` prefix are
+  read instead of being refused; device paths such as `\\.\…` are still
+  refused.
+- Threads are matched to project folders regardless of letter case, slash
+  style and the `\\?\` prefix on Windows.
+- The home folder is hidden in titles in every common Windows spelling
+  (`C:\Users\…`, `c:/users/…`, `\\?\C:\…`, Git Bash and WSL forms).
+- Security tests run on Windows without symlink rights.
 
 ## 0.1.1 - 2026-11-17
 

@@ -1,6 +1,6 @@
 {
   "name": "tokenbeacon",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "TokenBeacon – Usage & Context Dashboard for Codex. Local and read-only; unofficial, not affiliated with OpenAI.",
   "license": "MIT",
   "private": true,
