@@ -7,7 +7,6 @@ import {
   readdirSync,
   readFileSync,
   statSync,
-  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -27,6 +26,7 @@ import {
   NOW_MS,
   rolloutLines,
 } from "./helpers/fixture-codex-home.ts";
+import { CAN_LINK_FILES, FILE_SYMLINK_SKIP_REASON, linkDirectory, tryLinkFile } from "./helpers/links.ts";
 
 function allThreads(snapshot: MonitorSnapshot): ThreadView[] {
   return [
@@ -130,7 +130,7 @@ describe("current schema fixture", () => {
     const fixture = createFixtureCodexHome();
     t.after(fixture.cleanup);
     const link = path.join(fixture.root, "codex-link");
-    symlinkSync(fixture.codexHome, link);
+    linkDirectory(fixture.codexHome, link);
     const snapshot = await snapshotFor(link);
     const explicit = allThreads(snapshot).find((thread) => thread.id === IDS.threadExplicit)!;
     assert.equal(explicit.totalTokens.value, 1_000);
@@ -297,16 +297,12 @@ describe("rollout path confinement (OSR-010)", () => {
     writeFileSync(path.join(sessions, "notes.txt"), "not a rollout");
     writeFileSync(path.join(home, "rollout-at-root.jsonl"), rolloutLines({}));
     writeFileSync(path.join(home, "auth.json"), '{"token":"fixture-secret"}');
-    symlinkSync(path.join(fixture.outsideDir, "rollout-outside.jsonl"), path.join(sessions, "rollout-link-out.jsonl"));
-    symlinkSync(path.join(sessions, "rollout-catalog.jsonl"), path.join(sessions, "rollout-link-in.jsonl"));
-    symlinkSync(path.join(home, "auth.json"), path.join(sessions, "rollout-auth.jsonl"));
-    symlinkSync(fixture.outsideDir, path.join(home, "sessions", "linked-dir"));
+    linkDirectory(fixture.outsideDir, path.join(home, "sessions", "linked-dir"));
 
     const kind = (p: string) => resolveRolloutPath(home, p).kind;
     assert.equal(kind(path.join(sessions, "rollout-explicit.jsonl")), "ok");
     assert.equal(kind(path.join(home, "archived_sessions", "rollout-old.jsonl")), "ok");
     assert.equal(kind("sessions/2026/11/16/rollout-explicit.jsonl"), "ok"); // relative to CODEX_HOME
-    assert.equal(kind(path.join(sessions, "rollout-link-in.jsonl")), "ok");
     assert.equal(kind(path.join(sessions, "rollout-nope.jsonl")), "missing");
 
     assert.equal(kind(path.join(fixture.outsideDir, "rollout-outside.jsonl")), "outsideStorage");
@@ -314,14 +310,27 @@ describe("rollout path confinement (OSR-010)", () => {
     assert.equal(kind(`${path.join(home, "sessions")}/../../outside/rollout-outside.jsonl`), "outsideStorage");
     assert.equal(kind(path.join(home, "rollout-at-root.jsonl")), "outsideStorage");
     assert.equal(kind(path.join(home, "auth.json")), "outsideStorage");
-    assert.equal(kind(path.join(sessions, "rollout-link-out.jsonl")), "outsideStorage");
-    assert.equal(kind(path.join(sessions, "rollout-auth.jsonl")), "outsideStorage");
     assert.equal(kind(path.join(home, "sessions", "linked-dir", "rollout-outside.jsonl")), "outsideStorage");
     assert.equal(kind(path.join(sessions, "notes.txt")), "invalidName");
     assert.equal(kind(path.join(home, "sessions")), "outsideStorage");
     assert.equal(kind(path.join(sessions)), "invalidName"); // a directory, not a rollout file
     assert.equal(kind(`${path.join(sessions, "rollout-explicit.jsonl")}\0.zst`), "invalidName");
     assert.equal(kind(""), "invalidName");
+  });
+
+  test("file symlinks are followed only within rollout storage", { skip: !CAN_LINK_FILES && FILE_SYMLINK_SKIP_REASON }, (t) => {
+    const fixture = createFixtureCodexHome();
+    t.after(fixture.cleanup);
+    const home = fixture.codexHome;
+    const sessions = path.join(home, "sessions", "2026", "11", "16");
+    writeFileSync(path.join(home, "auth.json"), '{"token":"fixture-secret"}');
+    assert.ok(tryLinkFile(path.join(fixture.outsideDir, "rollout-outside.jsonl"), path.join(sessions, "rollout-link-out.jsonl")));
+    assert.ok(tryLinkFile(path.join(sessions, "rollout-catalog.jsonl"), path.join(sessions, "rollout-link-in.jsonl")));
+    assert.ok(tryLinkFile(path.join(home, "auth.json"), path.join(sessions, "rollout-auth.jsonl")));
+    const kind = (p: string) => resolveRolloutPath(home, p).kind;
+    assert.equal(kind(path.join(sessions, "rollout-link-in.jsonl")), "ok");
+    assert.equal(kind(path.join(sessions, "rollout-link-out.jsonl")), "outsideStorage");
+    assert.equal(kind(path.join(sessions, "rollout-auth.jsonl")), "outsideStorage");
   });
 
   test("sessions directory symlinked elsewhere is followed only within its real target", (t) => {
@@ -332,7 +341,7 @@ describe("rollout path confinement (OSR-010)", () => {
     mkdirSync(home);
     mkdirSync(realSessions, { recursive: true });
     writeFileSync(path.join(realSessions, "rollout-a.jsonl"), rolloutLines({}));
-    symlinkSync(realSessions, path.join(home, "sessions"));
+    linkDirectory(realSessions, path.join(home, "sessions"));
     assert.equal(resolveRolloutPath(home, path.join(home, "sessions", "rollout-a.jsonl")).kind, "ok");
   });
 

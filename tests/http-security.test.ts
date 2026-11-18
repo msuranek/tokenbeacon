@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest, type IncomingHttpHeaders, type Server } from "node:http";
 import { connect } from "node:net";
 import { homedir, tmpdir } from "node:os";
@@ -18,6 +18,7 @@ import { SnapshotService } from "../src/snapshot-service.ts";
 import type { LocalDataSource, LocalSnapshotRows } from "../src/sources/local-data.ts";
 import type { RolloutCache } from "../src/sources/rollouts.ts";
 import type { MonitorSnapshot, RolloutTelemetry } from "../src/types.ts";
+import { tryLinkFile } from "./helpers/links.ts";
 
 // ---------------------------------------------------------------------------
 // Synthetic, test-only fixtures. No real Codex data is read in this file.
@@ -191,7 +192,8 @@ describe("local HTTP API security", () => {
     writeFileSync(path.join(distRoot, "index.html"), "<!doctype html><title>INDEX</title>");
     writeFileSync(path.join(distRoot, "assets", "app.js"), "console.log('app')");
     writeFileSync(path.join(workDir, "outside-secret.txt"), "TOP-SECRET-OUTSIDE-DIST");
-    symlinkSync(path.join(workDir, "outside-secret.txt"), path.join(distRoot, "assets", "link.txt"));
+    // Without file-symlink rights (Windows) the link check below is a no-op; every other check still runs.
+    tryLinkFile(path.join(workDir, "outside-secret.txt"), path.join(distRoot, "assets", "link.txt"));
     server = createMonitorServer({
       getSnapshot: () => snapshot,
       getError: () => refreshError,
