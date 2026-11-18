@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Terminal hints for the port and `CODEX_HOME` show PowerShell and cmd
   commands on Windows instead of POSIX shell syntax. On Windows,
   `CODEX_HOME` also accepts `~\`.
+- The notice for unreadable session logs no longer claims that Codex has no
+  log; it says the logs are missing, damaged or outside the Codex data folder.
 
 ### Fixed
 

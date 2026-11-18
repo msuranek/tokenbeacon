@@ -596,7 +596,7 @@ function describeSourceProblems(snapshot: MonitorSnapshot): { blocking: boolean;
       problems.push({
         key: "rollouts",
         code: rollouts.detail,
-        text: `Token and context details are missing for ${plural(other, "thread")}, because Codex has no readable session log for them.`,
+        text: `Token and context details are missing for ${plural(other, "thread")}: their session logs are missing, damaged or outside the Codex data folder.`,
       });
     }
   }
