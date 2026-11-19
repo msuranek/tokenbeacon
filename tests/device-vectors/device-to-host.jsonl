@@ -1,0 +1,15 @@
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[1],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\r\n", "expect": "ok", "note": "device hello (CRLF from println)"}
+{"line": "{\"tb\":1,\"t\":\"alive\",\"seq\":128,\"up\":3605}\n", "expect": "ok", "note": "alive"}
+{"line": "{\"tb\":1,\"t\":\"err\",\"code\":\"bad_field\"}\n", "expect": "ok", "note": "error report"}
+{"line": "{\"tb\":1,\"t\":\"alive\",\"seq\":1,\"up\":2,\"extra\":true}\n", "expect": "ok", "note": "unknown field ignored"}
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"other-board\",\"fw\":\"1.0\",\"proto\":[1],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\n", "expect": "unknown_device", "note": "another device"}
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\n", "expect": "bad_field", "note": "empty proto"}
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[1],\"nonce\":\"5f1c\",\"id\":\"c3a9f01b\"}\n", "expect": "bad_field", "note": "short nonce"}
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[1],\"nonce\":\"5f1c9a2e\",\"id\":\"C3A9F01B\"}\n", "expect": "bad_field", "note": "uppercase id"}
+{"line": "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0 <b>\",\"proto\":[1],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\n", "expect": "bad_field", "note": "markup in firmware version"}
+{"line": "{\"tb\":1,\"t\":\"alive\",\"seq\":1,\"up\":-2}\n", "expect": "bad_field", "note": "negative uptime"}
+{"line": "{\"tb\":1,\"t\":\"err\",\"code\":\"Bad Code\"}\n", "expect": "bad_field", "note": "invalid error code"}
+{"line": "{\"tb\":1,\"t\":\"data\",\"payload\":\"x\"}\n", "expect": "unknown_type", "note": "unknown type"}
+{"line": "{\"tb\":2,\"t\":\"alive\",\"seq\":1,\"up\":2}\n", "expect": "unsupported_version", "note": "other major version"}
+{"line": "{\"tb\":1,\"t\":\"err\",\"code\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}", "expect": "line_too_long", "note": "over 512 bytes"}
+{"line": "\u0000\u0001garbage\n", "expect": "bad_json", "note": "binary garbage"}
