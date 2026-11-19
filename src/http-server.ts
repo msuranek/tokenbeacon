@@ -55,6 +55,8 @@ export interface MonitorServerOptions {
   getError: () => Error | null;
   /** True while the first refresh is still running. */
   isLoading?: () => boolean;
+  /** Status of the optional USB display; null (and absent from /api/health) when it is off. */
+  getDeviceStatus?: () => { state: string; detail: string | null } | null;
   distRoot: string;
 }
 
@@ -136,6 +138,7 @@ export function createMonitorServer(options: MonitorServerOptions): Server {
     if (url === "/api/health") {
       const snapshot = options.getSnapshot();
       const error = options.getError();
+      const device = options.getDeviceStatus?.() ?? null;
       const sources = (snapshot?.sourceHealth ?? []).map(({ source, state, detail }) => ({
         source,
         state,
@@ -158,6 +161,9 @@ export function createMonitorServer(options: MonitorServerOptions): Server {
         error: error ? "refresh_failed" : null,
         // Stable codes only; source details never contain paths.
         sources,
+        // The optional USB display, only when enabled. State codes only (no port names);
+        // it never changes the overall status, because the display is optional.
+        ...(device ? { device: { state: device.state, detail: device.detail } } : {}),
       });
       return;
     }

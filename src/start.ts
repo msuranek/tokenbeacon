@@ -6,6 +6,8 @@ import { SnapshotService } from "./snapshot-service.ts";
 import type { MonitorSnapshot } from "./types.ts";
 import { currentPlatform, type PathPlatform } from "./paths.ts";
 import { exampleCodexHome, startCommandLines } from "./platform-hints.ts";
+import { startDeviceBridge } from "./device/index.ts";
+import type { DeviceBridge } from "./device/bridge.ts";
 
 export interface StartOptions {
   port: number;
@@ -14,6 +16,8 @@ export interface StartOptions {
   refreshMs?: number;
   log?: (line: string) => void;
   warn?: (line: string) => void;
+  /** Environment for optional features (USB display); defaults to process.env. */
+  env?: NodeJS.ProcessEnv;
 }
 
 export interface RunningMonitor {
@@ -22,6 +26,8 @@ export interface RunningMonitor {
   address: AddressInfo;
   /** Resolves when the first data refresh has finished (or failed). */
   firstRefresh: Promise<void>;
+  /** The optional USB display bridge; null unless TOKENBEACON_DEVICE is set. */
+  device: DeviceBridge | null;
   stop(): Promise<void>;
 }
 
@@ -48,10 +54,12 @@ export async function startMonitor(options: StartOptions): Promise<RunningMonito
 
   // The bind address is fixed to 127.0.0.1 and is intentionally not configurable:
   // the API has no authentication and must never be reachable from the network.
+  let device: DeviceBridge | null = null;
   const server = createMonitorServer({
     getSnapshot: () => service.current,
     getError: () => service.error,
     isLoading: () => service.loading,
+    getDeviceStatus: () => device?.getStatus() ?? null,
     distRoot: options.distRoot,
   });
 
@@ -73,14 +81,19 @@ export async function startMonitor(options: StartOptions): Promise<RunningMonito
     () => warn("Loading Codex data failed; retrying every 5 seconds."),
   );
   service.start(options.refreshMs ?? 5_000);
+  device = startDeviceBridge({ getSnapshot: () => service.current, log, warn, env: options.env });
 
   return {
     server,
     service,
     address,
     firstRefresh,
+    get device() {
+      return device;
+    },
     stop: () =>
       new Promise<void>((resolve) => {
+        device?.stop();
         service.stop();
         server.close(() => resolve());
         // Polling browsers keep idle keep-alive connections open.

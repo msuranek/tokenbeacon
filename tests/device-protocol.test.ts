@@ -233,8 +233,8 @@ describe("device protocol: parsing untrusted lines", () => {
   });
 });
 
-describe("device protocol: no runtime effect yet", () => {
-  test("nothing in the application imports the device module", () => {
+describe("device protocol: isolated from the rest of the application", () => {
+  test("only the start-up code imports the device module", () => {
     const sources: string[] = [];
     const walk = (directory: string) => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -247,6 +247,7 @@ describe("device protocol: no runtime effect yet", () => {
     const importers = sources.filter(
       (file) => !file.includes(`${path.sep}device${path.sep}`) && /from\s+["'][^"']*device\//.test(readFileSync(file, "utf8")),
     );
-    assert.deepEqual(importers, []);
+    // start.ts starts the bridge only when TOKENBEACON_DEVICE is set (see startup tests).
+    assert.deepEqual(importers.map((file) => path.relative(ROOT, file).split(path.sep).join("/")), ["src/start.ts"]);
   });
 });

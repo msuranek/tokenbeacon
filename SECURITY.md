@@ -67,3 +67,13 @@ Out of scope:
   limit per file; lines over 64 MiB are skipped.
 - The API never returns file paths, and errors are reported as stable codes.
 - No telemetry and no outbound network connections.
+- The optional USB display (`TOKENBEACON_DEVICE`, off by default) uses only
+  the local USB serial port. TokenBeacon opens a port only if it identifies as
+  a TokenBeacon display (Espressif USB vendor ID and the product name
+  “TokenBeacon Display”) or the user named it, and keeps it only after a
+  handshake with a random nonce. It sends only limit and context percentages
+  with their freshness – no names, IDs, paths or token counts – and treats
+  everything the device sends as untrusted, bounded input. To find the port it
+  runs fixed system tools without a shell: `ioreg` and `stty` on macOS, the
+  built-in Windows PowerShell with a fixed script on Windows. The device never
+  changes the dashboard or the overall `/api/health` status.

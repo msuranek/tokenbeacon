@@ -1,7 +1,8 @@
 # TokenBeacon USB display protocol (`device-state/v1`)
 
-Status: **draft** for the optional USB display (planned for v0.3.0). Nothing
-in TokenBeacon sends these messages yet.
+Status: **draft** for the optional USB display (planned for v0.3.0). TokenBeacon
+sends these messages only when `TOKENBEACON_DEVICE` is set; the display
+firmware is not released yet.
 
 TokenBeacon can drive a small display board (reference: LILYGO T-Display-S3)
 over a single USB-C cable. The board is a USB CDC serial device; the protocol
@@ -124,6 +125,35 @@ Reports a rejected host line by code only, e.g. `line_too_long`, `bad_json`,
 ```json
 {"tb":1,"t":"err","code":"bad_field"}
 ```
+
+## Host behaviour (TokenBeacon)
+
+Off unless `TOKENBEACON_DEVICE` is set:
+
+| Setting | Behaviour |
+| --- | --- |
+| unset or `off` | No device code runs. |
+| `auto` | Uses a port that identifies as a TokenBeacon display: USB vendor ID `0x303A` (Espressif) and product name `TokenBeacon Display`. `TOKENBEACON_DEVICE_SERIAL` limits this to one USB serial number. |
+| `COM5`, `/dev/cu.usbmodem1101` | Uses exactly this port. |
+
+- **Discovery** every 5 seconds while no display is connected: `ioreg` on
+  macOS; on Windows a built-in Windows PowerShell 5.1 helper with a fixed
+  script (`System.IO.Ports`), started only when the display is enabled.
+- **Handshake:** after opening the port the host sends `hello`; a port that
+  does not answer with a matching `hello` within 2 seconds, or answers as
+  another device, is closed and not tried again until TokenBeacon restarts.
+- **Sending:** a `state` message right after the handshake, then when the
+  displayed values change and at least every 10 seconds; never more than one
+  per second.
+- **Watchdog:** no `alive` or `err` line from the device for 30 seconds
+  closes the port; unplugging is detected and the display is found again.
+- **Busy port** (another program, such as a serial monitor, holds it): retried
+  after 15, 30 and then every 60 seconds; other programs are never stopped.
+- **Port settings:** DTR on, RTS off, never 1200 baud, so the board neither
+  resets nor enters its bootloader.
+- **Status:** `/api/health` gains a `device` entry (`searching`, `handshake`,
+  `connected`, `busy`, `unrecognized` and a detail code) only when the display
+  is enabled. It never changes the overall status.
 
 ## Timing on the device
 

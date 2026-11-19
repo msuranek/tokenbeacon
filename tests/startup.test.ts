@@ -161,6 +161,79 @@ describe("startup", () => {
   });
 });
 
+describe("optional USB display", () => {
+  test("is off by default: no bridge, no device entry in /api/health", async (t) => {
+    const fixture = createFixtureCodexHome();
+    t.after(fixture.cleanup);
+    const service = new SnapshotService(new LocalDataSource(fixture.codexHome));
+    for (const env of [{}, { TOKENBEACON_DEVICE: "off" }]) {
+      const monitor = await startMonitor({ port: 0, distRoot: path.join(fixture.root, "no-dist"), service, env, ...quiet });
+      await monitor.firstRefresh;
+      assert.equal(monitor.device, null);
+      const health = JSON.parse((await get(monitor.address.port, "/api/health")).body);
+      assert.ok(!("device" in health));
+      await monitor.stop();
+    }
+  });
+
+  test("an invalid setting is reported once and the dashboard still starts", async (t) => {
+    const fixture = createFixtureCodexHome();
+    t.after(fixture.cleanup);
+    const warnings: string[] = [];
+    const monitor = await startMonitor({
+      port: 0,
+      distRoot: path.join(fixture.root, "no-dist"),
+      service: new SnapshotService(new LocalDataSource(fixture.codexHome)),
+      env: { TOKENBEACON_DEVICE: "/etc/passwd" },
+      log: () => undefined,
+      warn: (line) => warnings.push(line),
+    });
+    t.after(() => monitor.stop());
+    await monitor.firstRefresh;
+    assert.equal(monitor.device, null);
+    assert.ok(warnings.some((line) => line.includes("TOKENBEACON_DEVICE") && line.includes("stays off")));
+    assert.ok(!warnings.join("\n").includes("/etc/passwd"), "the rejected value is not echoed");
+    assert.equal((await get(monitor.address.port, "/api/snapshot")).status, 200);
+  });
+
+  test(
+    "auto mode searches with the real system tools and only adds a device entry to /api/health",
+    { skip: process.platform !== "darwin" && process.platform !== "win32" && "USB display supports macOS and Windows" },
+    async (t) => {
+      const fixture = createFixtureCodexHome();
+      t.after(fixture.cleanup);
+      const service = new SnapshotService(new LocalDataSource(fixture.codexHome));
+      const baseline = await startMonitor({ port: 0, distRoot: path.join(fixture.root, "no-dist"), service, env: {}, ...quiet });
+      await baseline.firstRefresh;
+      const before = JSON.parse((await get(baseline.address.port, "/api/health")).body);
+      await baseline.stop();
+
+      const monitor = await startMonitor({
+        port: 0,
+        distRoot: path.join(fixture.root, "no-dist"),
+        service,
+        env: { TOKENBEACON_DEVICE: "auto" },
+        ...quiet,
+      });
+      t.after(() => monitor.stop());
+      await monitor.firstRefresh;
+      assert.ok(monitor.device);
+      // macOS runs ioreg; Windows starts the PowerShell helper (can take a few seconds).
+      let health: Record<string, unknown> = {};
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        health = JSON.parse((await get(monitor.address.port, "/api/health")).body);
+        const device = health.device as { detail: string | null } | undefined;
+        if (device && device.detail !== null) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      assert.deepEqual(health.device, { state: "searching", detail: "no_display" });
+      assert.equal(health.status, before.status, "the optional display never changes the overall status");
+      assert.deepEqual(health.sources, before.sources);
+      assert.ok(!/COM\d|\/dev\//.test(JSON.stringify(health)), "no port names");
+    },
+  );
+});
+
 describe("data problem hints", () => {
   test("missing Codex home explains CODEX_HOME", async (t) => {
     const { root, cleanup } = createTempRoot();

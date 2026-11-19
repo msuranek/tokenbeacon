@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Preview: optional USB display support (`TOKENBEACON_DEVICE`, off by
+  default). TokenBeacon finds a TokenBeacon display on macOS and Windows,
+  verifies it with a handshake and sends only limit and context percentages
+  with their freshness, following the documented `device-state/v1`
+  protocol. The display firmware is not released yet.
+
 ## 0.2.0 - 2026-11-18
 
 TokenBeacon now runs on Windows 11 as well as macOS. Tested on a real
