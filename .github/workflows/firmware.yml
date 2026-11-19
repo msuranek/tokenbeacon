@@ -1,0 +1,54 @@
+name: Firmware
+
+# Builds and host-tests the optional USB display firmware. Runs only when the
+# firmware or the shared protocol vectors change.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - "tests/device-vectors/**"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - "tests/device-vectors/**"
+      - ".github/workflows/firmware.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware:
+    name: Firmware / T-Display-S3
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: firmware
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PlatformIO (pinned, isolated)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pio"
+          "$RUNNER_TEMP/pio/bin/pip" install --disable-pip-version-check "platformio==6.1.18"
+          echo "$RUNNER_TEMP/pio/bin" >> "$GITHUB_PATH"
+
+      - name: Host tests (shared protocol vectors)
+        run: pio test -e native
+
+      - name: Build firmware
+        run: pio run -e tdisplay_s3
+
+      - name: Firmware size
+        run: ls -l .pio/build/tdisplay_s3/firmware.bin

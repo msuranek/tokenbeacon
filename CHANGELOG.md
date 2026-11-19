@@ -13,7 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default). TokenBeacon finds a TokenBeacon display on macOS and Windows,
   verifies it with a handshake and sends only limit and context percentages
   with their freshness, following the documented `device-state/v1`
-  protocol. The display firmware is not released yet.
+  protocol.
+- Preview: display firmware for the LILYGO T-Display-S3 in `firmware/`
+  (PlatformIO). It builds and its protocol logic is tested against the same
+  vectors as TokenBeacon; it has not been verified on a real board yet.
 
 ## 0.2.0 - 2026-11-18
 

@@ -139,7 +139,7 @@ packages are build tools; the server itself uses only Node.js built-ins.
 | --- | --- | --- |
 | `CODEX_HOME` | `~/.codex` (macOS), `%USERPROFILE%\.codex` (Windows) | Location of your Codex data folder. Codex uses this folder unless you set `CODEX_HOME` for it; use the same value here. |
 | `TOKENBEACON_PORT` | `4310` | Local port for the dashboard. |
-| `TOKENBEACON_DEVICE` | `off` | Optional USB display (preview; the display firmware is not released yet): `auto` finds a connected TokenBeacon display, or name one port, e.g. `COM5` or `/dev/cu.usbmodem1101`. See [the protocol](docs/device-protocol.md). |
+| `TOKENBEACON_DEVICE` | `off` | Optional USB display (preview, see [firmware/](firmware/README.md)): `auto` finds a connected TokenBeacon display, or name one port, e.g. `COM5` or `/dev/cu.usbmodem1101`. See [the protocol](docs/device-protocol.md). |
 
 macOS (Terminal):
 
