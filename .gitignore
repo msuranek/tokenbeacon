@@ -55,6 +55,8 @@ history.jsonl
 # ---------------------------------------------------------------------------
 node_modules/
 dist/
+# PlatformIO build output and downloaded libraries
+firmware/.pio/
 coverage/
 *.tsbuildinfo
 .vite/
