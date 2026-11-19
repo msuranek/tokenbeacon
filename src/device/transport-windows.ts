@@ -22,7 +22,19 @@ import {
 const PORT_NAME = /^COM[1-9][0-9]{0,2}$/;
 const SERIAL = /^[0-9A-Za-z]{4,64}$/;
 const MAX_HELPER_LINE = 64 * 1024;
-const TIMEOUTS = { LIST: 15_000, OPEN: 5_000, SEND: 3_000, CLOSE: 3_000 } as const;
+const TIMEOUTS = { LIST: 30_000, OPEN: 5_000, SEND: 3_000, CLOSE: 3_000 } as const;
+/**
+ * A cold start of Windows PowerShell can take well over 15 seconds on a busy or
+ * slow machine (seen on CI). A helper that is not ready in time is stopped and
+ * a new one is started on the next attempt.
+ */
+export const HELPER_STARTUP_TIMEOUT_MS = 60_000;
+
+export interface WindowsTransportOptions {
+  /** Starts the helper process; replaced in tests. */
+  spawnHelper?: () => ChildProcessWithoutNullStreams;
+  startupTimeoutMs?: number;
+}
 
 /**
  * Helper protocol (one line each, ASCII):
@@ -160,9 +172,13 @@ export class WindowsTransport implements DeviceTransport {
   private reply: { resolve: (line: string) => void; reject: (error: Error) => void } | null = null;
   private connection: HelperConnection | null = null;
   private stdoutBuffer = "";
+  private readonly spawnHelper: () => ChildProcessWithoutNullStreams;
+  private readonly startupTimeoutMs: number;
 
-  constructor(config: Exclude<DeviceConfig, { mode: "off" }>) {
+  constructor(config: Exclude<DeviceConfig, { mode: "off" }>, options: WindowsTransportOptions = {}) {
     this.config = config;
+    this.spawnHelper = options.spawnHelper ?? spawnPowerShellHelper;
+    this.startupTimeoutMs = options.startupTimeoutMs ?? HELPER_STARTUP_TIMEOUT_MS;
   }
 
   async discover(): Promise<DeviceCandidate[]> {
@@ -243,16 +259,17 @@ export class WindowsTransport implements DeviceTransport {
 
   private startHelper(): Promise<void> {
     if (this.ready) return this.ready;
-    const helper = spawn(
-      powershellPath(),
-      ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(HELPER_SCRIPT, "utf16le").toString("base64")],
-      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
-    );
+    const helper = this.spawnHelper();
     this.helper = helper;
     this.stdoutBuffer = "";
     helper.stderr.resume(); // never shown: may contain system paths
     this.ready = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new TransportError("unsupported")), 15_000);
+      const timer = setTimeout(() => {
+        reject(new TransportError("unsupported"));
+        // Without this, the rejected start would be reused and every later
+        // attempt would fail until TokenBeacon restarts.
+        if (this.helper === helper) this.dispose();
+      }, this.startupTimeoutMs);
       helper.stdout.setEncoding("utf8");
       helper.stdout.on("data", (chunk: string) => {
         this.stdoutBuffer += chunk;
@@ -301,6 +318,14 @@ export class WindowsTransport implements DeviceTransport {
       reply.resolve(line);
     }
   }
+}
+
+function spawnPowerShellHelper(): ChildProcessWithoutNullStreams {
+  return spawn(
+    powershellPath(),
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(HELPER_SCRIPT, "utf16le").toString("base64")],
+    { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
+  );
 }
 
 function errorCode(answer: string): TransportErrorCode {

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
@@ -105,6 +107,52 @@ describe("device transports: discovery parsing", () => {
     assert.match(HELPER_SCRIPT, /'\^COM\[1-9\]\[0-9\]\{0,2\}\$'/);
     assert.ok(!/Invoke-Expression|iex |Start-Process|Remove-Item|Set-ExecutionPolicy|Invoke-WebRequest|Net\.WebClient/i.test(HELPER_SCRIPT));
     assert.ok(Buffer.from(HELPER_SCRIPT, "utf16le").toString("base64").length < 30_000, "fits on the command line");
+  });
+});
+
+/** A stand-in for the PowerShell helper process. */
+class FakeHelper extends EventEmitter {
+  stdin = new PassThrough();
+  stdout = new PassThrough();
+  stderr = new PassThrough();
+  received: string[] = [];
+  killed = false;
+  constructor(ready: boolean) {
+    super();
+    this.stdin.setEncoding("utf8");
+    this.stdin.on("data", (chunk: string) => {
+      for (const line of chunk.split("\n").filter(Boolean)) {
+        this.received.push(line);
+        if (ready && line === "LIST") this.stdout.write("PORTS []\r\n");
+      }
+    });
+    if (ready) setImmediate(() => this.stdout.write("READY\r\n"));
+  }
+  kill() {
+    this.killed = true;
+    this.emit("exit", null);
+    return true;
+  }
+}
+
+describe("device transports: Windows helper lifecycle", () => {
+  test("a helper that is not ready in time is stopped and replaced on the next attempt", async () => {
+    const helpers = [new FakeHelper(false), new FakeHelper(true)];
+    let spawned = 0;
+    const transport = new WindowsTransport(
+      { mode: "auto", serial: null },
+      { spawnHelper: () => helpers[spawned++] as unknown as ChildProcessWithoutNullStreams, startupTimeoutMs: 50 },
+    );
+    try {
+      await assert.rejects(transport.discover(), (error: unknown) => error instanceof TransportError && error.code === "unsupported");
+      assert.ok(helpers[0].received.includes("EXIT"), "the stuck helper is asked to exit");
+      assert.deepEqual(await transport.discover(), []);
+      assert.equal(spawned, 2, "a fresh helper is started instead of reusing the failed start");
+      assert.deepEqual(await transport.discover(), []);
+      assert.equal(spawned, 2, "a working helper is reused");
+    } finally {
+      transport.dispose();
+    }
   });
 });
 
