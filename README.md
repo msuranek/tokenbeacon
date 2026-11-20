@@ -140,7 +140,7 @@ packages are build tools; the server itself uses only Node.js built-ins.
 | `CODEX_HOME` | `~/.codex` (macOS), `%USERPROFILE%\.codex` (Windows) | Location of your Codex data folder. Codex uses this folder unless you set `CODEX_HOME` for it; use the same value here. |
 | `TOKENBEACON_PORT` | `4310` | Local port for the dashboard. |
 | `TOKENBEACON_DEVICE` | `off` | Optional USB display (preview; the display firmware is not released yet): `auto` finds a connected TokenBeacon display, or name one port, e.g. `COM5` or `/dev/cu.usbmodem1101`. See [the protocol](docs/device-protocol.md). |
-| `TOKENBEACON_DEVICE` = `ble` | | Preview, macOS only: an Android phone running the TokenBeacon Display app (`android/`, build from source) as a wireless display over Bluetooth. The first phone that pairs is remembered; later connections are accepted only from that phone. `npm run ble:unpair` forgets it. Needs the Xcode Command Line Tools once to build a small Bluetooth helper; macOS asks once for Bluetooth access for “TokenBeacon BLE”. |
+| `TOKENBEACON_DEVICE` = `ble` | | Preview, macOS only: an Android phone running the TokenBeacon Display app (`android/`, build from source) as a wireless display over Bluetooth. Pair the phone once with `npm run ble:pair` (type the display ID shown in the app); afterwards only that phone is accepted. `npm run ble:unpair` forgets it. See [the Android display guide](docs/android-display.md). Needs the Xcode Command Line Tools once to build a small Bluetooth helper; macOS asks once for Bluetooth access for “TokenBeacon BLE”. |
 | `TOKENBEACON_DEVICE_ID` | – | With `ble`: use only the phone with this display ID (shown in the app). Selects a phone; it is not a password. |
 
 macOS (Terminal):
