@@ -22,7 +22,21 @@ export interface DeviceTransport {
   dispose(): void;
 }
 
-export type TransportErrorCode = "busy" | "not_found" | "open_failed" | "discover_failed" | "unsupported";
+export type TransportErrorCode =
+  | "busy"
+  | "not_found"
+  | "open_failed"
+  | "discover_failed"
+  | "unsupported"
+  // Bluetooth display only:
+  | "bluetooth_off"
+  | "bluetooth_unauthorized"
+  | "bluetooth_unavailable"
+  | "helper_unavailable"
+  /** The phone did not prove it is the paired display. */
+  | "untrusted"
+  /** Another phone than TOKENBEACON_DEVICE_ID (selection, not authentication). */
+  | "not_selected";
 
 export class TransportError extends Error {
   readonly code: TransportErrorCode;
