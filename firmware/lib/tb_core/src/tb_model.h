@@ -14,6 +14,20 @@ enum class Link : uint8_t { Waiting, Live, Stale, Offline };
 constexpr uint32_t kStaleAfterMs = 30000;
 constexpr uint32_t kOfflineAfterMs = 120000;
 
+/** Freshness tag drawn next to a value. */
+enum class Tag : uint8_t { None, Now, Last };
+
+/**
+ * NOW only for a value the host marked current while the link is live (at most
+ * kStaleAfterMs since the last state); otherwise LAST, so minutes-old data is
+ * never labelled NOW. None when there is no value.
+ */
+constexpr Tag valueTag(ValueState st, Link link) {
+  return st == ValueState::Unavailable                      ? Tag::None
+         : st == ValueState::Current && link == Link::Live ? Tag::Now
+                                                           : Tag::Last;
+}
+
 struct FieldView {
   ValueState st = ValueState::Unavailable;
   Window win = Window::None;  // limits only

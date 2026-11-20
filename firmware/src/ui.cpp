@@ -45,7 +45,8 @@ void drawTag(TFT_eSprite& s, int y, const char* tag, uint16_t color) {
 }
 
 /** One block: label, big number (or N/A / WAIT), bar and a small note. */
-void drawBlock(TFT_eSprite& s, int top, const char* label, const tb::FieldView& view, bool isContext, bool dim) {
+void drawBlock(TFT_eSprite& s, int top, const char* label, const tb::FieldView& view, tb::Link link, bool isContext) {
+  const bool dim = link == tb::Link::Offline;
   s.drawFastHLine(0, top, kWidth, kDivider);
   s.setTextFont(2);
   s.setTextSize(1);
@@ -54,8 +55,9 @@ void drawBlock(TFT_eSprite& s, int top, const char* label, const tb::FieldView& 
   s.drawString(label, kMargin, top + 6);
 
   const bool available = view.st != tb::ValueState::Unavailable;
-  if (available) {
-    drawTag(s, top + 9, view.st == tb::ValueState::Current ? "NOW" : "LAST", view.st == tb::ValueState::Current ? kOk : kWarn);
+  const tb::Tag tag = tb::valueTag(view.st, link);
+  if (tag != tb::Tag::None) {
+    drawTag(s, top + 9, tag == tb::Tag::Now ? "NOW" : "LAST", tag == tb::Tag::Now ? kOk : kWarn);
   }
 
   char text[24];
@@ -175,10 +177,10 @@ void render(TFT_eSPI& tft, const tb::DisplayModel& model, uint32_t nowMs, bool h
   if (!model.hasState()) {
     drawWaiting(s, hostConnected);
   } else {
-    const bool dim = model.link(nowMs) == tb::Link::Offline;
-    drawBlock(s, kStatusHeight, "5H LIMIT", model.five(nowMs), false, dim);
-    drawBlock(s, kStatusHeight + kBlockHeight, "WEEKLY", model.week(nowMs), false, dim);
-    drawBlock(s, kStatusHeight + 2 * kBlockHeight, "CONTEXT", model.context(nowMs), true, dim);
+    const tb::Link link = model.link(nowMs);
+    drawBlock(s, kStatusHeight, "5H LIMIT", model.five(nowMs), link, false);
+    drawBlock(s, kStatusHeight + kBlockHeight, "WEEKLY", model.week(nowMs), link, false);
+    drawBlock(s, kStatusHeight + 2 * kBlockHeight, "CONTEXT", model.context(nowMs), link, true);
   }
   s.pushSprite(0, 0);
 }

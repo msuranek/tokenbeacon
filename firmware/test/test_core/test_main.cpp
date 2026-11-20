@@ -247,6 +247,28 @@ void test_model_handles_millis_wraparound() {
   TEST_ASSERT_EQUAL_INT64(5, model.secondsSinceUpdate(before + 5000));
 }
 
+void test_now_tag_only_while_data_is_fresh() {
+  // Pure rule.
+  TEST_ASSERT_EQUAL(Tag::Now, valueTag(ValueState::Current, Link::Live));
+  TEST_ASSERT_EQUAL(Tag::Last, valueTag(ValueState::Current, Link::Stale));
+  TEST_ASSERT_EQUAL(Tag::Last, valueTag(ValueState::Current, Link::Offline));
+  TEST_ASSERT_EQUAL(Tag::Last, valueTag(ValueState::LastKnown, Link::Live));
+  TEST_ASSERT_EQUAL(Tag::None, valueTag(ValueState::Unavailable, Link::Live));
+  TEST_ASSERT_EQUAL(Tag::None, valueTag(ValueState::Unavailable, Link::Offline));
+
+  // Through the model: a current context value received at t=10 s.
+  DisplayModel model;
+  TEST_ASSERT_TRUE(model.apply(sampleState(1), 10000));
+  TEST_ASSERT_EQUAL(ValueState::Current, model.context(10000).st);
+  auto tagAt = [&](uint32_t nowMs) { return valueTag(model.context(nowMs).st, model.link(nowMs)); };
+  TEST_ASSERT_EQUAL(Tag::Now, tagAt(10000));            // fresh
+  TEST_ASSERT_EQUAL(Tag::Now, tagAt(10000 + 30000));    // exactly 30 s
+  TEST_ASSERT_EQUAL(Tag::Last, tagAt(10000 + 30001));   // stale
+  TEST_ASSERT_EQUAL(Tag::Last, tagAt(10000 + 720000));  // offline (12 min)
+  TEST_ASSERT_TRUE(model.apply(sampleState(2), 800000));
+  TEST_ASSERT_EQUAL(Tag::Now, tagAt(800000));           // a new state makes it fresh again
+}
+
 // --- formatting -------------------------------------------------------------------
 
 void test_format() {
@@ -283,6 +305,7 @@ int main() {
   RUN_TEST(test_model_ages_countdowns_and_link_state);
   RUN_TEST(test_model_sequence_order_wrap_and_reconnect);
   RUN_TEST(test_model_handles_millis_wraparound);
+  RUN_TEST(test_now_tag_only_while_data_is_fresh);
   RUN_TEST(test_format);
   return UNITY_END();
 }
