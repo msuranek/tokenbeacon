@@ -77,3 +77,20 @@ Out of scope:
   runs fixed system tools without a shell: `ioreg` and `stty` on macOS, the
   built-in Windows PowerShell with a fixed script on Windows. The device never
   changes the dashboard or the overall `/api/health` status.
+- The optional Bluetooth display (`TOKENBEACON_DEVICE=ble`, macOS only, off by
+  default) sends the same data to the TokenBeacon Display Android app. The Mac
+  only connects out to a phone advertising the TokenBeacon service; it does not
+  advertise or accept Bluetooth connections. The phone requires an encrypted,
+  authenticated link (system pairing with number comparison). The phone holds
+  an ECDSA P-256 key in the Android Keystore; on every connection, including
+  automatic reconnects, it must sign a fresh random challenge, and only the key
+  of the first phone paired this way is accepted. TokenBeacon stores only that
+  public key (`~/Library/Application Support/TokenBeacon`, owner-only file).
+  `TOKENBEACON_DEVICE_ID` only selects a phone and grants no trust. Bluetooth
+  runs in a small helper app built locally from source with fixed tool
+  arguments (`xcrun swiftc`, ad-hoc `codesign`) into
+  `~/Library/Caches/TokenBeacon`, rebuilt only when its sources change, and
+  started with `/usr/bin/open`, so macOS grants Bluetooth to the helper alone.
+  It talks to TokenBeacon over a private Unix socket (owner-only directory,
+  one-time token, closed after the helper connects). The Android app has no
+  internet, location or storage permission.

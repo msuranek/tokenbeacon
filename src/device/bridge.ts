@@ -31,6 +31,8 @@ export interface BridgeOptions {
   getSnapshot: () => MonitorSnapshot | null;
   hostVersion: string;
   log?: (message: string) => void;
+  /** How the display is named in log lines; "USB display" unless set. */
+  label?: string;
   clock?: BridgeClock;
   nonce?: () => string;
 }
@@ -56,6 +58,7 @@ export class DeviceBridge {
   private readonly options: BridgeOptions;
   private readonly clock: BridgeClock;
   private readonly log: (message: string) => void;
+  private readonly label: string;
   private readonly makeNonce: () => string;
   private timer: unknown = null;
   private ticking = false;
@@ -78,6 +81,7 @@ export class DeviceBridge {
     this.options = options;
     this.clock = options.clock ?? systemClock;
     this.log = options.log ?? (() => undefined);
+    this.label = options.label ?? "USB display";
     this.makeNonce = options.nonce ?? (() => randomBytes(4).toString("hex"));
   }
 
@@ -131,8 +135,9 @@ export class DeviceBridge {
     let candidates: DeviceCandidate[];
     try {
       candidates = await this.options.transport.discover();
-    } catch {
-      this.setStatus("searching", "discover_failed");
+    } catch (error) {
+      // Bluetooth reports why it cannot search (off, no permission, helper missing).
+      this.setStatus("searching", error instanceof TransportError ? error.code : "discover_failed");
       return;
     }
     const config = this.options.config;
@@ -155,8 +160,13 @@ export class DeviceBridge {
         const wait = BUSY_BACKOFF_MS[Math.min(this.busyAttempts, BUSY_BACKOFF_MS.length - 1)];
         this.busyAttempts += 1;
         this.nextDiscoveryAt = this.clock.now() + wait;
-        if (this.status.state !== "busy") this.log("USB display: the port is in use by another program; retrying.");
+        if (this.status.state !== "busy") this.log(`${this.label}: the port is in use by another program; retrying.`);
         this.setStatus("busy", "port_busy");
+      } else if (code === "untrusted" || code === "not_selected") {
+        // Not the paired (or selected) phone: never try it again in this run.
+        this.rejected.add(candidate.id);
+        this.nextDiscoveryAt = this.clock.now() + DISCOVERY_INTERVAL_MS;
+        this.setStatus("unrecognized", code);
       } else {
         this.setStatus("searching", code);
       }
@@ -197,7 +207,7 @@ export class DeviceBridge {
       this.lastSentAt = Number.NEGATIVE_INFINITY;
       this.lastSentKey = null;
       this.setStatus("connected", null);
-      this.log(this.connectedOnce ? "USB display reconnected." : "USB display connected.");
+      this.log(this.connectedOnce ? `${this.label} reconnected.` : `${this.label} connected.`);
       this.connectedOnce = true;
       return;
     }
@@ -230,7 +240,7 @@ export class DeviceBridge {
   /** The port answered, but not as a TokenBeacon display: never try it again in this run. */
   private reject(code: string): void {
     if (this.candidate) this.rejected.add(this.candidate.id);
-    this.log("USB display: a port did not answer as a TokenBeacon display and is ignored.");
+    this.log(`${this.label}: a port did not answer as a TokenBeacon display and is ignored.`);
     this.closeConnection();
     this.nextDiscoveryAt = this.clock.now() + DISCOVERY_INTERVAL_MS;
     this.setStatus("unrecognized", code);
@@ -240,7 +250,7 @@ export class DeviceBridge {
     const wasConnected = this.status.state === "connected";
     this.closeConnection();
     this.nextDiscoveryAt = retryAt;
-    if (wasConnected) this.log("USB display disconnected; waiting for it to come back.");
+    if (wasConnected) this.log(`${this.label} disconnected; waiting for it to come back.`);
     this.setStatus("searching", code);
   }
 

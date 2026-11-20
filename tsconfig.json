@@ -18,6 +18,8 @@
     "src/**/*.d.mts",
     "tests/**/*.ts",
     "bench/**/*.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "android/host/**/*.ts",
+    "android/test/**/*.ts"
   ]
 }

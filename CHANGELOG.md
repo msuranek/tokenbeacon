@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifies it with a handshake and sends only limit and context percentages
   with their freshness, following the documented `device-state/v1`
   protocol. The display firmware is not released yet.
+- Preview: an Android phone as a wireless display over Bluetooth on macOS
+  (`TOKENBEACON_DEVICE=ble`, off by default) with the TokenBeacon Display app
+  in `android/` (build from source). Uses the same protocol as the USB
+  display; the paired phone must prove its identity on every connection, and
+  reconnects automatically. `npm run ble:unpair` forgets the paired phone.
 
 ## 0.2.0 - 2026-11-18
 
