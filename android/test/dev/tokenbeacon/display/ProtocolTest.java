@@ -63,6 +63,15 @@ public final class ProtocolTest {
         expired.expired = true;
         check(DisplayFormat.limit(expired, 0).value.equals("WAIT") && DisplayFormat.limit(expired, 0).bar == -1, "expired shows no percentage");
         check(DisplayFormat.limit(new Protocol.Limit(), 0).value.equals("N/A"), "unavailable");
+        Protocol.Context current = new Protocol.Context();
+        current.status = Protocol.Status.CURRENT;
+        current.used = 40;
+        check(DisplayFormat.context(current, 29).tag.equals("NOW") && DisplayFormat.context(current, 30).tag.equals("LAST")
+                && DisplayFormat.context(current, 720).tag.equals("LAST"), "NOW only while data is fresh");
+        Protocol.Limit currentLimit = new Protocol.Limit();
+        currentLimit.status = Protocol.Status.CURRENT;
+        currentLimit.left = 59;
+        check(DisplayFormat.limit(currentLimit, 0).tag.equals("NOW") && DisplayFormat.limit(currentLimit, 720).tag.equals("LAST"), "stale limit is LAST");
         check(DisplayFormat.freshness(state, 29_999) == DisplayFormat.Freshness.LIVE && DisplayFormat.freshness(state, 30_000) == DisplayFormat.Freshness.STALE
                 && DisplayFormat.freshness(state, 120_000) == DisplayFormat.Freshness.OFFLINE, "freshness");
 

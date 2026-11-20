@@ -26,13 +26,21 @@ final class DisplayFormat {
         return Freshness.OFFLINE;
     }
 
+    /**
+     * "NOW" only while the data is fresh: once nothing has arrived for
+     * STALE_MS, a value the host sent as current is no longer known to be.
+     */
+    static String tag(Protocol.Status status, long sinceSeconds) {
+        return status == Protocol.Status.CURRENT && sinceSeconds * 1000 < DisplayStore.STALE_MS ? "NOW" : "LAST";
+    }
+
     static Metric limit(Protocol.Limit limit, long sinceSeconds) {
         Metric m = new Metric();
         if (limit == null || limit.status == Protocol.Status.UNAVAILABLE) {
             m.value = "N/A";
             return m;
         }
-        m.tag = limit.status == Protocol.Status.CURRENT ? "NOW" : "LAST";
+        m.tag = tag(limit.status, sinceSeconds);
         if (limit.expired) {
             m.value = "WAIT";
             m.level = Level.WARN;
@@ -59,7 +67,7 @@ final class DisplayFormat {
             m.value = "N/A";
             return m;
         }
-        m.tag = ctx.status == Protocol.Status.CURRENT ? "NOW" : "LAST";
+        m.tag = tag(ctx.status, sinceSeconds);
         m.value = Integer.toString(ctx.used);
         m.unit = "% used";
         m.bar = ctx.used;
