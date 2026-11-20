@@ -5,7 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { ensureBleHelper, HelperBuildError } from "./ble-helper-build.ts";
-import { decideTrust, makeChallenge, PairingStore, PairingUnreadableError, verifyAuthResponse } from "./ble-trust.ts";
+import { decideTrust, makeChallenge, PairingStore, PairingUnreadableError, verifyAuthResponse, type PairedDisplay, type PresentedIdentity } from "./ble-trust.ts";
 import { LineAssembler } from "./lines.ts";
 import { TransportError, type DeviceCandidate, type DeviceConnection, type DeviceTransport, type TransportErrorCode } from "./transport.ts";
 
@@ -21,6 +21,9 @@ import { TransportError, type DeviceCandidate, type DeviceConnection, type Devic
  *
  * Before any display data is sent, the phone must sign a fresh challenge with
  * its key; only the paired phone's key is accepted (see ble-trust.ts).
+ * TokenBeacon never pairs on its own: a phone is paired only with
+ * `npm run ble:pair`, where the user compares its display ID with the phone.
+ * Until then the helper is not even started.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -71,6 +74,7 @@ export class MacBleTransport implements DeviceTransport {
   private buffer = "";
   private disposed = false;
   private helperFailure: TransportErrorCode | null = null;
+  private pairingHint: "not_paired" | "pairing_unreadable" | null = null;
 
   constructor(options: MacBleTransportOptions) {
     this.deviceId = options.deviceId;
@@ -81,7 +85,14 @@ export class MacBleTransport implements DeviceTransport {
     this.timeouts = { ...BLE_TIMEOUTS, OPEN: BLE_OPEN_TIMEOUT_MS, ...options.timeouts };
   }
 
+  /** Paired phones only: without a pairing, nothing runs and no Bluetooth is used. */
   async discover(): Promise<DeviceCandidate[]> {
+    this.pairedDisplay();
+    return this.scan();
+  }
+
+  /** Lists phones advertising the TokenBeacon service (also used by `npm run ble:pair`). */
+  async scan(): Promise<DeviceCandidate[]> {
     await this.start();
     if (this.bluetooth !== "ready") throw new TransportError(bluetoothCode(this.bluetooth));
     const line = await this.command("SCAN", (l) => l.startsWith("DEVICES ") || l.startsWith("ERR "), this.timeouts.SCAN, "discover_failed");
@@ -107,12 +118,30 @@ export class MacBleTransport implements DeviceTransport {
     const connection = new BleConnection(this);
     this.connection = connection;
     try {
-      await this.authenticate();
+      this.trust(await this.authenticate());
     } catch (error) {
       this.closeConnection(connection);
       throw error;
     }
     return connection;
+  }
+
+  /**
+   * For `npm run ble:pair`: connects, lets the phone prove its key and
+   * disconnects again. Sends no display data and decides nothing.
+   */
+  async identify(candidate: DeviceCandidate): Promise<PresentedIdentity> {
+    if (!UUID.test(candidate.port)) throw new TransportError("not_found");
+    await this.start();
+    const opened = await this.command(`OPEN ${candidate.port}`, (l) => l === "OPENED" || l.startsWith("ERR "), this.timeouts.OPEN, "open_failed");
+    if (opened !== "OPENED") throw new TransportError(opened === "ERR not_found" ? "not_found" : "open_failed");
+    const connection = new BleConnection(this);
+    this.connection = connection;
+    try {
+      return await this.authenticate();
+    } finally {
+      this.closeConnection(connection);
+    }
   }
 
   dispose(): void {
@@ -131,7 +160,7 @@ export class MacBleTransport implements DeviceTransport {
 
   // --- identity ----------------------------------------------------------------
 
-  private async authenticate(): Promise<void> {
+  private async authenticate(): Promise<PresentedIdentity> {
     const challenge = makeChallenge();
     const line = await this.command(`AUTH ${challenge.toString("base64")}`, (l) => l.startsWith("AUTHED ") || l.startsWith("ERR "), this.timeouts.AUTH, "untrusted");
     const presented = line.startsWith("AUTHED ") ? verifyAuthResponse(challenge, Buffer.from(line.slice(7), "base64")) : null;
@@ -139,26 +168,41 @@ export class MacBleTransport implements DeviceTransport {
       this.log("Bluetooth display: a phone did not prove its identity and is ignored.");
       throw new TransportError("untrusted");
     }
-    let paired;
+    return presented;
+  }
+
+  private trust(presented: PresentedIdentity): void {
+    const decision = decideTrust(this.pairedDisplay(), presented, this.deviceId);
+    if (decision === "not_selected") throw new TransportError("not_selected");
+    if (decision === "untrusted") {
+      this.log("Bluetooth display: a phone that is not the paired display was ignored. To pair another phone, run `npm run ble:unpair` and `npm run ble:pair`.");
+      throw new TransportError("untrusted");
+    }
+    if (decision === "pair") throw new TransportError("not_paired"); // the pairing was removed meanwhile
+  }
+
+  /** The paired phone, or a status code; the hint is logged once per change. */
+  private pairedDisplay(): PairedDisplay {
+    let paired: PairedDisplay | null;
     try {
       paired = this.pairing.load();
     } catch (error) {
-      if (error instanceof PairingUnreadableError) {
-        this.log("Bluetooth display: the saved pairing is damaged; no phone is trusted. Run `npm run ble:unpair` and pair again.");
-        throw new TransportError("untrusted");
-      }
-      throw error;
+      if (!(error instanceof PairingUnreadableError)) throw error;
+      this.hint("pairing_unreadable", "Bluetooth display: the saved pairing is damaged; no phone is trusted. Run `npm run ble:unpair`, then `npm run ble:pair`.");
+      throw new TransportError("pairing_unreadable");
     }
-    const decision = decideTrust(paired, presented, this.deviceId);
-    if (decision === "not_selected") throw new TransportError("not_selected");
-    if (decision === "untrusted") {
-      this.log("Bluetooth display: a phone that is not the paired display was ignored. To pair another phone, run `npm run ble:unpair` first.");
-      throw new TransportError("untrusted");
+    if (!paired) {
+      this.hint("not_paired", "Bluetooth display: no phone is paired yet. Run `npm run ble:pair` in a terminal and compare the display ID with the phone.");
+      throw new TransportError("not_paired");
     }
-    if (decision === "pair") {
-      this.pairing.save(presented);
-      this.log(`Bluetooth display paired: ID ${presented.id}.`);
-    }
+    this.pairingHint = null;
+    return paired;
+  }
+
+  private hint(code: "not_paired" | "pairing_unreadable", line: string): void {
+    if (this.pairingHint === code) return;
+    this.pairingHint = code;
+    this.log(line);
   }
 
   // --- helper link ---------------------------------------------------------------

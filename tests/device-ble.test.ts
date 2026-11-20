@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
 import { DeviceBridge } from "../src/device/bridge.ts";
+import { pairBluetoothDisplay } from "../src/device/ble-pair.ts";
 import { ensureBleHelper, helperSourceHash, HelperBuildError, HELPER_EXECUTABLE, type RunTool } from "../src/device/ble-helper-build.ts";
 import { AUTH_CONTEXT, decideTrust, displayId, PairingStore, PairingUnreadableError, verifyAuthResponse } from "../src/device/ble-trust.ts";
 import { readDeviceConfig } from "../src/device/config.ts";
@@ -262,7 +263,7 @@ const socket = net.connect(socketPath, () => {
 socket.on("error", () => process.exit(0));
 `;
 
-function harness(options: { mode?: string; key?: { privateKey: KeyObject; spki: Buffer }; deviceId?: string | null; pairing?: PairingStore } = {}) {
+function harness(options: { mode?: string; key?: { privateKey: KeyObject; spki: Buffer }; deviceId?: string | null; pairing?: PairingStore; paired?: boolean } = {}) {
   const dir = tempDir();
   const script = path.join(dir, "fake-helper.mjs");
   writeFileSync(script, FAKE_HELPER);
@@ -272,6 +273,7 @@ function harness(options: { mode?: string; key?: { privateKey: KeyObject; spki: 
   const logFile = path.join(dir, "helper.log");
   writeFileSync(logFile, "");
   const pairing = options.pairing ?? new PairingStore(path.join(dir, "pairing"));
+  if (options.paired !== false && !options.pairing) pairing.save(presentedOf(key));
   const logs: string[] = [];
   let launches = 0;
   const transport = new MacBleTransport({
@@ -320,7 +322,46 @@ async function until(check: () => boolean, ms = 10_000): Promise<void> {
 }
 
 describe("bluetooth display: transport and bridge", () => {
-  test("first connection pairs the phone, sends only device-state/v1 after it proved its key", async () => {
+  test("without a pairing nothing runs: no helper, no Bluetooth, a hint to run ble:pair", async () => {
+    const h = harness({ paired: false });
+    const bridge = bridgeFor(h.transport);
+    try {
+      await bridge.start();
+      assert.deepEqual(bridge.getStatus(), { state: "searching", detail: "not_paired" });
+      await bridge.tick();
+      assert.equal(h.launches(), 0, "the helper is not started before pairing");
+      assert.equal(h.pairing.load(), null, "TokenBeacon never pairs on its own");
+      assert.equal(h.logs.filter((line) => line.includes("npm run ble:pair")).length, 1, "the hint is logged once");
+    } finally {
+      bridge.stop();
+    }
+  });
+
+  test("ble:pair pairs only the phone whose full display ID the user typed", async () => {
+    const outcomes: string[] = [];
+    for (const typed of ["", "0000 0000 0000 0000", "LAST4", "FULL"]) {
+      const h = harness({ paired: false });
+      const id = displayId(h.key.spki);
+      const answer = typed === "FULL" ? id.toUpperCase().replace(/(.{4})/g, "$1 ") : typed === "LAST4" ? id.slice(-4) : typed;
+      const lines: string[] = [];
+      outcomes.push(await pairBluetoothDisplay({ transport: h.transport, store: h.pairing, ask: async () => answer, print: (line) => lines.push(line) }));
+      if (typed === "FULL") {
+        assert.ok(h.pairing.load()?.publicKey.equals(h.key.spki));
+        assert.doesNotMatch(h.commands(), /LINE /, "pairing sends no display data");
+      } else {
+        assert.equal(h.pairing.load(), null);
+      }
+    }
+    assert.deepEqual(outcomes, ["cancelled", "mismatch", "mismatch", "paired"]);
+
+    const again = harness();
+    const lines: string[] = [];
+    assert.equal(await pairBluetoothDisplay({ transport: again.transport, store: again.pairing, ask: async () => assert.fail("no question"), print: (line) => lines.push(line) }), "already_paired");
+    assert.equal(again.launches(), 0);
+    assert.ok(lines.some((line) => line.includes("ble:unpair")));
+  });
+
+  test("the paired phone gets only device-state/v1, after it proved its key", async () => {
     const h = harness();
     try {
       assert.deepEqual(await h.transport.discover(), [{ id: PHONE, port: PHONE, serial: null }], "invalid ids are dropped");
@@ -329,9 +370,6 @@ describe("bluetooth display: transport and bridge", () => {
       await until(() => bridge.getStatus().state === "connected");
       await until(() => h.commands().includes('"t":"state"'));
       bridge.stop();
-      const paired = h.pairing.load();
-      assert.ok(paired && paired.publicKey.equals(h.key.spki), "the phone's public key is remembered");
-      assert.ok(h.logs.some((line) => line === `Bluetooth display paired: ID ${displayId(h.key.spki)}.`));
       const commands = h.commands();
       assert.ok(commands.indexOf("AUTH") < commands.indexOf("LINE "), "identity is checked before any data");
       const sent = commands.split("\n").filter((line) => line.startsWith("LINE ")).map((line) => line.slice(5));
@@ -384,7 +422,6 @@ describe("bluetooth display: transport and bridge", () => {
       await bridge.start();
       await until(() => bridge.getStatus().state === "unrecognized");
       assert.equal(bridge.getStatus().detail, "untrusted");
-      assert.equal(unsigned.pairing.load(), null, "nothing is paired");
     } finally {
       bridge.stop();
     }
@@ -394,7 +431,6 @@ describe("bluetooth display: transport and bridge", () => {
       await bridge.start();
       await until(() => bridge.getStatus().state === "unrecognized");
       assert.equal(bridge.getStatus().detail, "not_selected");
-      assert.equal(other.pairing.load(), null, "selection never pairs another phone");
     } finally {
       bridge.stop();
     }
@@ -410,9 +446,11 @@ describe("bluetooth display: transport and bridge", () => {
 
     const logs: string[] = [];
     let builds = 0;
+    const pairedStore = new PairingStore(path.join(tempDir(), "pairing"));
+    pairedStore.save(presentedOf(phoneKey()));
     const missing = new MacBleTransport({
       deviceId: null,
-      pairing: new PairingStore(path.join(tempDir(), "pairing")),
+      pairing: pairedStore,
       prepareHelper: async () => {
         builds += 1;
         throw new HelperBuildError("swift_unavailable");

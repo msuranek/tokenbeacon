@@ -83,9 +83,13 @@ Out of scope:
   advertise or accept Bluetooth connections. The phone requires an encrypted,
   authenticated link (system pairing with number comparison). The phone holds
   an ECDSA P-256 key in the Android Keystore; on every connection, including
-  automatic reconnects, it must sign a fresh random challenge, and only the key
-  of the first phone paired this way is accepted. TokenBeacon stores only that
-  public key (`~/Library/Application Support/TokenBeacon`, owner-only file).
+  automatic reconnects, it must sign a fresh random challenge. TokenBeacon
+  never trusts a phone on its own, because macOS does not tell it whether a
+  Bluetooth link is encrypted: a phone is paired only with `npm run ble:pair`,
+  where the user types the full 16-digit display ID (a fingerprint of the
+  phone's key) shown on the phone. Only that key is accepted afterwards, and
+  only its public key is stored (`~/Library/Application Support/TokenBeacon`,
+  owner-only file). Without a pairing, no Bluetooth code runs.
   `TOKENBEACON_DEVICE_ID` only selects a phone and grants no trust. Bluetooth
   runs in a small helper app built locally from source with fixed tool
   arguments (`xcrun swiftc`, ad-hoc `codesign`) into

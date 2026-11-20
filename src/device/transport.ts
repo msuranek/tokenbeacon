@@ -36,7 +36,11 @@ export type TransportErrorCode =
   /** The phone did not prove it is the paired display. */
   | "untrusted"
   /** Another phone than TOKENBEACON_DEVICE_ID (selection, not authentication). */
-  | "not_selected";
+  | "not_selected"
+  /** No phone is paired yet (`npm run ble:pair`). */
+  | "not_paired"
+  /** The saved pairing is damaged; nothing is trusted. */
+  | "pairing_unreadable";
 
 export class TransportError extends Error {
   readonly code: TransportErrorCode;

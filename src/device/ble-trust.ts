@@ -9,10 +9,12 @@ import path from "node:path";
  * The phone keeps an ECDSA P-256 key in the Android Keystore that cannot be
  * exported. Its display ID is derived from the public key. On every
  * connection TokenBeacon sends a fresh random challenge and the phone signs
- * it. The first phone that does so over an encrypted, authenticated (paired)
- * Bluetooth link is remembered by its public key – no secret is stored on the
- * Mac. Every later connection, including automatic reconnects, is accepted
- * only from a phone that proves it holds that same key.
+ * it. A phone is remembered by its public key – no secret is stored on the
+ * Mac – only through `npm run ble:pair`, where the user types the display ID
+ * shown on the phone (macOS cannot tell TokenBeacon whether a link is
+ * encrypted, so answering first is never enough). Every connection, including
+ * automatic reconnects, is accepted only from a phone that proves it holds
+ * that same key.
  *
  * TOKENBEACON_DEVICE_ID only selects which phone to use; it proves nothing.
  */
@@ -79,7 +81,7 @@ export type TrustDecision = "trusted" | "pair" | "untrusted" | "not_selected";
 /**
  * - not_selected: TOKENBEACON_DEVICE_ID names another phone (selection only);
  * - trusted:      the same key as the paired phone;
- * - pair:         nothing paired yet – remember this phone;
+ * - pair:         nothing paired yet (only `npm run ble:pair` may pair);
  * - untrusted:    a phone is paired and this is a different key.
  */
 export function decideTrust(paired: PairedDisplay | null, presented: PresentedIdentity, selectedId: string | null): TrustDecision {

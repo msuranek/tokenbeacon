@@ -27,6 +27,7 @@
     "test": "node --no-warnings --test tests/*.test.ts",
     "test:live": "node --no-warnings --test tests/live/*.test.ts",
     "bench": "node --no-warnings bench/refresh.bench.ts",
+    "ble:pair": "node --no-warnings scripts/ble-pair.ts",
     "ble:unpair": "node --no-warnings scripts/ble-unpair.ts",
     "check": "npm run typecheck && node --check src/main.mjs && node --check src/runtime-check.mjs && node --check src/frontend-build.mjs && npm test && vite build"
   },
