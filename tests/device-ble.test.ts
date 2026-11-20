@@ -16,6 +16,11 @@ import { acceptHelper, MacBleTransport } from "../src/device/transport-ble-macos
 import { TransportError } from "../src/device/transport.ts";
 import type { MonitorSnapshot } from "../src/types.ts";
 
+// The Bluetooth display is macOS only (TOKENBEACON_DEVICE=ble is refused on
+// Windows). Its helper link uses Unix sockets and its pairing record POSIX file
+// modes, so those tests run on macOS/Linux; the rest runs everywhere.
+const POSIX_ONLY = process.platform === "win32" ? "Unix sockets and POSIX file modes (the Bluetooth display is macOS only)" : false;
+
 // Everything here is synthetic: generated keys, a fake helper instead of
 // Bluetooth, temporary folders instead of ~/Library.
 
@@ -106,8 +111,10 @@ describe("bluetooth display: identity", () => {
     assert.equal(store.load(), null);
     const presented = presentedOf(phoneKey());
     store.save(presented, new Date("2026-11-20T12:00:00Z"));
-    assert.equal(statSync(store.file).mode & 0o777, 0o600);
-    assert.equal(statSync(dir).mode & 0o777, 0o700);
+    if (!POSIX_ONLY) {
+      assert.equal(statSync(store.file).mode & 0o777, 0o600);
+      assert.equal(statSync(dir).mode & 0o777, 0o700);
+    }
     const loaded = store.load();
     assert.ok(loaded && loaded.publicKey.equals(presented.publicKey) && loaded.id === presented.id);
     assert.doesNotMatch(readFileSync(store.file, "utf8"), /PRIVATE/);
@@ -185,7 +192,7 @@ describe("bluetooth display: helper build", () => {
   });
 });
 
-describe("bluetooth display: helper link", () => {
+describe("bluetooth display: helper link", { skip: POSIX_ONLY }, () => {
   test("only a client with the one-time token is accepted, then nothing else can connect", async () => {
     const socketPath = path.join(tempDir(), "s");
     const token = "0123456789abcdef0123456789abcdef";
@@ -321,7 +328,7 @@ async function until(check: () => boolean, ms = 10_000): Promise<void> {
   }
 }
 
-describe("bluetooth display: transport and bridge", () => {
+describe("bluetooth display: transport and bridge", { skip: POSIX_ONLY }, () => {
   test("without a pairing nothing runs: no helper, no Bluetooth, a hint to run ble:pair", async () => {
     const h = harness({ paired: false });
     const bridge = bridgeFor(h.transport);
