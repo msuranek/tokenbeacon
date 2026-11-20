@@ -107,3 +107,30 @@ jobs:
           } finally {
             & taskkill.exe /PID $server.Id /T /F | Out-Null
           }
+
+  bluetooth-display:
+    name: Bluetooth display (Android app + macOS helper)
+    # Builds from source only; nothing is installed on a phone and no Bluetooth is used.
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Typecheck the macOS Bluetooth helper
+        run: |
+          xcrun swiftc --version
+          xcrun swiftc -typecheck -swift-version 5 -target arm64-apple-macos13.0 src/device/ble-helper/TokenBeaconBLE.swift
+          plutil -lint src/device/ble-helper/Info.plist
+
+      - name: Build the Android app and run its protocol tests
+        # The runner image provides the Android SDK and a JDK; android/build.sh
+        # uses the newest installed build-tools and platform if the pinned ones
+        # are missing. The APK is signed with a throwaway debug key.
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          java -version
+          android/build.sh
+
