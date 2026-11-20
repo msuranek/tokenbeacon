@@ -20,7 +20,9 @@ final class DisplayStore {
         WAITING,
         /** A Mac is connected but has not completed the handshake. */
         HANDSHAKE,
-        CONNECTED
+        CONNECTED,
+        /** Battery protection stopped Bluetooth until the phone is charged. */
+        PAUSED_LOW_BATTERY
     }
 
     /** Data older than this is shown as stale, then as no connection (same as the ESP32). */
@@ -39,6 +41,8 @@ final class DisplayStore {
     private long stateAtMs;
     private String lastError;
     private String displayId;
+    private PowerPolicy.Power power = new PowerPolicy.Power();
+    private PowerPolicy.Profile profile = PowerPolicy.decide(new PowerPolicy.Settings(), new PowerPolicy.Power(), false);
 
     Link link() {
         return link;
@@ -64,6 +68,20 @@ final class DisplayStore {
 
     void setDisplayId(String value) {
         displayId = value;
+        notifyListeners();
+    }
+
+    PowerPolicy.Power power() {
+        return power;
+    }
+
+    PowerPolicy.Profile profile() {
+        return profile;
+    }
+
+    void setPower(PowerPolicy.Power value, PowerPolicy.Profile decided) {
+        power = value;
+        profile = decided;
         notifyListeners();
     }
 

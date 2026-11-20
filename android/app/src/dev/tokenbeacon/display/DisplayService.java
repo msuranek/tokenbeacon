@@ -58,8 +58,6 @@ public final class DisplayService extends Service {
     private static final UUID CCCD_UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     static final String FIRMWARE = "android-0.1.0";
-    static final String PREFS = "tokenbeacon";
-    static final String PREF_REQUIRE_PAIRING = "require_pairing";
     private static final String CHANNEL_ID = "link";
     private static final long ALIVE_MS = 10_000;
 
@@ -83,6 +81,10 @@ public final class DisplayService extends Service {
     private long aliveSeq;
     private long startedAt;
     private Identity identity;
+    /** Battery protection has stopped Bluetooth (PowerPolicy). */
+    private boolean paused;
+    /** Advertising mode currently in use; null when not advertising. */
+    private Boolean advertisingLowPower;
     private byte[] authAnswer;
 
     private final Runnable aliveTask = new Runnable() {
@@ -102,6 +104,18 @@ public final class DisplayService extends Service {
         }
     };
 
+    private final BroadcastReceiver batteryReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            onBattery(intent);
+        }
+    };
+
+    /** Settings changed in SettingsActivity (same process). Kept as a field: prefs hold listeners weakly. */
+    private final android.content.SharedPreferences.OnSharedPreferenceChangeListener prefsListener = (prefs, key) -> applyPolicy();
+
+    private PowerPolicy.Power power = new PowerPolicy.Power();
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -116,6 +130,9 @@ public final class DisplayService extends Service {
         manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         startInForeground();
         registerReceiver(adapterReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
+        Prefs.of(this).registerOnSharedPreferenceChangeListener(prefsListener);
+        Intent battery = registerReceiver(batteryReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (battery != null) onBattery(battery); // sticky: the current state right away
         main.postDelayed(aliveTask, ALIVE_MS);
         startPeripheral();
     }
@@ -129,10 +146,13 @@ public final class DisplayService extends Service {
     @Override
     public void onDestroy() {
         main.removeCallbacksAndMessages(null);
-        try {
-            unregisterReceiver(adapterReceiver);
-        } catch (IllegalArgumentException ignored) {
-            // not registered
+        Prefs.of(this).unregisterOnSharedPreferenceChangeListener(prefsListener);
+        for (BroadcastReceiver receiver : new BroadcastReceiver[] {adapterReceiver, batteryReceiver}) {
+            try {
+                unregisterReceiver(receiver);
+            } catch (IllegalArgumentException ignored) {
+                // not registered
+            }
         }
         stopPeripheral(DisplayStore.Link.STOPPED);
         super.onDestroy();
@@ -171,7 +191,7 @@ public final class DisplayService extends Service {
             store.setLink(DisplayStore.Link.ADVERTISING_FAILED);
             return;
         }
-        boolean secure = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_REQUIRE_PAIRING, true);
+        boolean secure = Prefs.requirePairing(this);
         int writePermission = secure ? BluetoothGattCharacteristic.PERMISSION_WRITE_ENCRYPTED_MITM : BluetoothGattCharacteristic.PERMISSION_WRITE;
         int readPermission = secure ? BluetoothGattCharacteristic.PERMISSION_READ_ENCRYPTED_MITM : BluetoothGattCharacteristic.PERMISSION_READ;
         BluetoothGattService service = new BluetoothGattService(SERVICE_UUID, BluetoothGattService.SERVICE_TYPE_PRIMARY);
@@ -204,10 +224,53 @@ public final class DisplayService extends Service {
         store.setLink(reason);
     }
 
+    // --- Power policy ----------------------------------------------------------
+
+    private void onBattery(Intent intent) {
+        PowerPolicy.Power next = new PowerPolicy.Power();
+        next.plugged = intent.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0;
+        int level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1);
+        int scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1);
+        next.level = level >= 0 && scale > 0 ? Math.round(level * 100f / scale) : -1;
+        int temperature = intent.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+        next.temperatureTenths = temperature;
+        power = next;
+        applyPolicy();
+    }
+
+    /** Applies settings and battery state: pause/resume Bluetooth and the advertising mode. */
+    private void applyPolicy() {
+        PowerPolicy.Profile profile = PowerPolicy.decide(Prefs.load(this), power, paused);
+        store.setPower(power, profile);
+        if (profile.paused && !paused) {
+            paused = true;
+            stopAdvertising();
+            if (server != null && host != null) {
+                try {
+                    server.cancelConnection(host);
+                } catch (SecurityException ignored) {
+                    // permission revoked meanwhile
+                }
+            }
+            store.setLink(DisplayStore.Link.PAUSED_LOW_BATTERY);
+        } else if (!profile.paused && paused) {
+            paused = false;
+            if (server != null && host == null) {
+                store.setLink(DisplayStore.Link.WAITING);
+                startAdvertising();
+            }
+        } else if (advertising && advertisingLowPower != null && advertisingLowPower != profile.lowPowerAdvertising) {
+            stopAdvertising(); // switch between Desk and Portable advertising
+            startAdvertising();
+        }
+    }
+
     private void startAdvertising() {
-        if (advertising || advertiser == null || server == null) return;
+        if (advertising || paused || advertiser == null || server == null) return;
+        boolean lowPower = store.profile().lowPowerAdvertising;
         AdvertiseSettings settings = new AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                // Portable: about once a second (slower reconnect, less battery); Desk: about 4× a second.
+                .setAdvertiseMode(lowPower ? AdvertiseSettings.ADVERTISE_MODE_LOW_POWER : AdvertiseSettings.ADVERTISE_MODE_BALANCED)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
                 .setConnectable(true)
                 .setTimeout(0)
@@ -220,6 +283,7 @@ public final class DisplayService extends Service {
         try {
             advertiser.startAdvertising(settings, data, advertiseCallback);
             advertising = true;
+            advertisingLowPower = lowPower;
         } catch (SecurityException e) {
             store.setLink(DisplayStore.Link.NO_PERMISSION);
         }
@@ -233,12 +297,13 @@ public final class DisplayService extends Service {
             // adapter already off
         }
         advertising = false;
+        advertisingLowPower = null;
     }
 
     private final AdvertiseCallback advertiseCallback = new AdvertiseCallback() {
         @Override
         public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-            if (host == null) store.setLink(DisplayStore.Link.WAITING);
+            if (host == null && !paused) store.setLink(DisplayStore.Link.WAITING);
         }
 
         @Override
@@ -377,8 +442,8 @@ public final class DisplayService extends Service {
     private void onConnection(BluetoothDevice device, int newState) {
         if (server == null) return;
         if (newState == BluetoothProfile.STATE_CONNECTED) {
-            if (host != null && !host.equals(device)) {
-                // One host at a time: a second central is dropped.
+            if (paused || (host != null && !host.equals(device))) {
+                // One host at a time, and none while paused for the battery.
                 try {
                     server.cancelConnection(device);
                 } catch (SecurityException ignored) {
@@ -393,6 +458,7 @@ public final class DisplayService extends Service {
             store.setLink(DisplayStore.Link.HANDSHAKE);
         } else if (newState == BluetoothProfile.STATE_DISCONNECTED && device.equals(host)) {
             clearHost();
+            if (paused) return;
             store.setLink(DisplayStore.Link.WAITING);
             startAdvertising(); // the Mac finds the phone again by the service UUID
         }

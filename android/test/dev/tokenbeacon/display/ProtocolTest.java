@@ -66,8 +66,49 @@ public final class ProtocolTest {
         check(DisplayFormat.freshness(state, 29_999) == DisplayFormat.Freshness.LIVE && DisplayFormat.freshness(state, 30_000) == DisplayFormat.Freshness.STALE
                 && DisplayFormat.freshness(state, 120_000) == DisplayFormat.Freshness.OFFLINE, "freshness");
 
+        // Power policy (BLE-B): modes, always-on, brightness, battery protection.
+        PowerPolicy.Settings auto = new PowerPolicy.Settings();
+        PowerPolicy.Power charging = power(true, 80, 300);
+        PowerPolicy.Power battery = power(false, 60, 300);
+        PowerPolicy.Profile p = PowerPolicy.decide(auto, charging, false);
+        check(p.desk && p.keepScreenOn && p.pixelShift && !p.lowPowerAdvertising && !p.paused && p.brightness == -1, "auto on charger = desk, always-on");
+        p = PowerPolicy.decide(auto, battery, false);
+        check(!p.desk && !p.keepScreenOn && p.lowPowerAdvertising && !p.pixelShift, "auto on battery = portable");
+        PowerPolicy.Settings desk = new PowerPolicy.Settings();
+        desk.mode = PowerPolicy.Mode.DESK;
+        desk.alwaysOn = false;
+        check(PowerPolicy.decide(desk, battery, false).desk && !PowerPolicy.decide(desk, battery, false).keepScreenOn, "desk without always-on");
+        PowerPolicy.Settings bright = new PowerPolicy.Settings();
+        bright.brightnessPercent = 90;
+        check(PowerPolicy.decide(bright, charging, false).brightness == 0.9f, "brightness on charger");
+        check(PowerPolicy.decide(bright, battery, false).brightness == PowerPolicy.PORTABLE_MAX_BRIGHTNESS, "portable caps brightness");
+        p = PowerPolicy.decide(auto, power(false, 20, 300), false);
+        check(p.notice == PowerPolicy.Notice.SAVING && !p.paused && p.brightness == PowerPolicy.SAVE_BRIGHTNESS, "saving at 20 %");
+        p = PowerPolicy.decide(auto, power(false, 10, 300), false);
+        check(p.paused && p.notice == PowerPolicy.Notice.PAUSED, "pause at 10 %");
+        check(PowerPolicy.decide(auto, power(false, 14, 300), true).paused, "stays paused below resume level");
+        check(!PowerPolicy.decide(auto, power(false, 16, 300), true).paused, "resumes above 15 %");
+        check(!PowerPolicy.decide(auto, power(true, 5, 300), true).paused, "resumes on the charger");
+        PowerPolicy.Settings off = new PowerPolicy.Settings();
+        off.batteryProtection = false;
+        check(!PowerPolicy.decide(off, power(false, 3, 500), false).paused && PowerPolicy.decide(off, power(false, 3, 500), false).notice == PowerPolicy.Notice.NONE, "protection off");
+        p = PowerPolicy.decide(bright, power(true, 50, 450), false);
+        check(p.notice == PowerPolicy.Notice.HOT && p.brightness == PowerPolicy.HOT_MAX_BRIGHTNESS, "hot phone dims");
+        check(PowerPolicy.decide(auto, power(true, 95, 300), false).notice == PowerPolicy.Notice.FULL_ON_CHARGER, "full on charger advice");
+        check(PowerPolicy.decide(auto, power(false, -1, Integer.MIN_VALUE), false).notice == PowerPolicy.Notice.NONE, "unknown battery state");
+        check(PowerPolicy.offlineBrightness(PowerPolicy.decide(bright, charging, false)) < 0.9f, "dims without fresh data");
+        check(PowerPolicy.parseMode("desk") == PowerPolicy.Mode.DESK && PowerPolicy.parseMode("x") == PowerPolicy.Mode.AUTO, "mode keys");
+
         System.out.println("ProtocolTest: " + passed + " passed, " + failures + " failed");
         if (failures > 0) System.exit(1);
+    }
+
+    private static PowerPolicy.Power power(boolean plugged, int level, int tenths) {
+        PowerPolicy.Power power = new PowerPolicy.Power();
+        power.plugged = plugged;
+        power.level = level;
+        power.temperatureTenths = tenths;
+        return power;
     }
 
     private static void check(boolean ok, String name) {

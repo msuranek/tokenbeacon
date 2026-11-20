@@ -12,6 +12,15 @@ OUT="$ROOT/android/build"
 SDK=${ANDROID_HOME:-"$HOME/Library/Android/sdk"}
 BUILD_TOOLS_VERSION=${BUILD_TOOLS_VERSION:-36.1.0}
 PLATFORM_VERSION=${PLATFORM_VERSION:-android-35}
+# Tested with build-tools 36.1.0 and android-35. Elsewhere (e.g. CI runners)
+# the newest installed versions are used if these are missing.
+if [ ! -d "$SDK/build-tools/$BUILD_TOOLS_VERSION" ] && [ -d "$SDK/build-tools" ]; then
+  BUILD_TOOLS_VERSION=$(ls "$SDK/build-tools" | sort -V | tail -1)
+fi
+if [ ! -f "$SDK/platforms/$PLATFORM_VERSION/android.jar" ] && [ -d "$SDK/platforms" ]; then
+  PLATFORM_VERSION=$(ls "$SDK/platforms" | grep -E '^android-[0-9]+$' | sort -V | tail -1)
+fi
+echo "Android SDK: build-tools $BUILD_TOOLS_VERSION, $PLATFORM_VERSION"
 BT="$SDK/build-tools/$BUILD_TOOLS_VERSION"
 ANDROID_JAR="$SDK/platforms/$PLATFORM_VERSION/android.jar"
 if [ -z "${JAVA_HOME:-}" ] && [ -d "/Applications/Android Studio.app/Contents/jbr/Contents/Home" ]; then
@@ -30,7 +39,7 @@ mkdir -p "$OUT/classes" "$OUT/test-classes" "$OUT/dex"
 SOURCES=$(find "$APP/src" -name '*.java')
 
 echo "== JVM protocol test (shared vectors)"
-PURE="$APP/src/dev/tokenbeacon/display/Json.java $APP/src/dev/tokenbeacon/display/Protocol.java $APP/src/dev/tokenbeacon/display/LineAssembler.java $APP/src/dev/tokenbeacon/display/DisplayFormat.java $APP/src/dev/tokenbeacon/display/DisplayStore.java"
+PURE="$APP/src/dev/tokenbeacon/display/Json.java $APP/src/dev/tokenbeacon/display/Protocol.java $APP/src/dev/tokenbeacon/display/LineAssembler.java $APP/src/dev/tokenbeacon/display/DisplayFormat.java $APP/src/dev/tokenbeacon/display/DisplayStore.java $APP/src/dev/tokenbeacon/display/PowerPolicy.java"
 # DisplayService.FIRMWARE is the only Android class the test needs; a stub keeps the test free of android.jar.
 mkdir -p "$OUT/test-src/dev/tokenbeacon/display"
 cat > "$OUT/test-src/dev/tokenbeacon/display/DisplayService.java" <<'EOF'

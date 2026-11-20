@@ -21,10 +21,12 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.Switch;
 import android.widget.TextView;
 
-/** Full-screen dashboard: 5h limit, weekly limit, context and link state. */
+/**
+ * Full-screen dashboard: 5h limit, weekly limit, context and link state.
+ * Screen-on, brightness and burn-in protection follow PowerPolicy.
+ */
 public final class MainActivity extends Activity {
     private static final int BG = Color.rgb(14, 16, 20);
     private static final int TEXT = Color.rgb(236, 238, 242);
@@ -44,7 +46,16 @@ public final class MainActivity extends Activity {
     private MetricView week;
     private MetricView context;
     private TextView footer;
+    private TextView title;
+    private TextView notice;
     private Button action;
+    private View root;
+    private long lastShiftAt;
+    private Boolean appliedKeepOn;
+    private float appliedBrightness = Float.NaN;
+    /** Burn-in protection: move the content by a few pixels about once a minute. */
+    private static final long SHIFT_MS = 60_000;
+    private static final int SHIFT_DP = 4;
 
     private final Runnable listener = this::render;
     private final Runnable ticker = new Runnable() {
@@ -64,7 +75,6 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildLayout());
         if (hasBluetoothPermissions(this)) {
             startDisplayService();
@@ -102,15 +112,18 @@ public final class MainActivity extends Activity {
         startForegroundService(new Intent(this, DisplayService.class));
     }
 
-    private void restartDisplayService() {
-        stopService(new Intent(this, DisplayService.class));
-        main.postDelayed(this::startDisplayService, 500);
+    /** Needed after the pairing setting changes: the GATT service is rebuilt. */
+    static void restartDisplayService(Context context) {
+        context.stopService(new Intent(context, DisplayService.class));
+        new Handler(Looper.getMainLooper()).postDelayed(
+                () -> context.startForegroundService(new Intent(context, DisplayService.class)), 500);
     }
 
     // --- Layout ---------------------------------------------------------------
 
     private View buildLayout() {
         LinearLayout root = new LinearLayout(this);
+        this.root = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
         int pad = dp(20);
@@ -123,10 +136,14 @@ public final class MainActivity extends Activity {
         linkText = text(16, TEXT);
         linkText.setPadding(dp(10), 0, 0, 0);
         header.addView(linkText, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        TextView title = text(13, MUTED);
-        title.setText("TokenBeacon");
+        title = text(13, MUTED);
         header.addView(title);
         root.addView(header);
+
+        notice = text(13, WARN);
+        notice.setPadding(0, dp(6), 0, 0);
+        notice.setVisibility(View.GONE);
+        root.addView(notice);
 
         five = new MetricView(this, "5H LIMIT");
         week = new MetricView(this, "WEEKLY LIMIT");
@@ -141,18 +158,15 @@ public final class MainActivity extends Activity {
         action.setVisibility(View.GONE);
         root.addView(action);
 
-        Switch pairing = new Switch(this);
-        pairing.setText("Require Bluetooth pairing (recommended)");
-        pairing.setTextColor(MUTED);
-        pairing.setChecked(getSharedPreferences(DisplayService.PREFS, MODE_PRIVATE).getBoolean(DisplayService.PREF_REQUIRE_PAIRING, true));
-        pairing.setOnCheckedChangeListener((button, checked) -> {
-            getSharedPreferences(DisplayService.PREFS, MODE_PRIVATE).edit().putBoolean(DisplayService.PREF_REQUIRE_PAIRING, checked).apply();
-            restartDisplayService();
-        });
-        root.addView(pairing);
-
+        LinearLayout bottom = new LinearLayout(this);
+        bottom.setGravity(Gravity.CENTER_VERTICAL);
         footer = text(12, MUTED);
-        root.addView(footer);
+        bottom.addView(footer, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        Button settings = new Button(this);
+        settings.setText("Settings");
+        settings.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        bottom.addView(settings);
+        root.addView(bottom);
         render();
         return root;
     }
@@ -186,6 +200,7 @@ public final class MainActivity extends Activity {
             case ADVERTISING_FAILED: label = "Bluetooth advertising failed"; dot = BAD; break;
             case WAITING: label = "Waiting for TokenBeacon…"; dot = WARN; break;
             case HANDSHAKE: label = "Connecting…"; dot = WARN; break;
+            case PAUSED_LOW_BATTERY: label = "Paused · low battery"; dot = BAD; break;
             case CONNECTED:
                 label = fresh == DisplayFormat.Freshness.LIVE ? "Connected · live"
                         : fresh == DisplayFormat.Freshness.NONE ? "Connected · waiting for data" : "Connected · no recent data";
@@ -225,10 +240,55 @@ public final class MainActivity extends Activity {
             action.setVisibility(View.GONE);
         }
 
+        PowerPolicy.Profile profile = store.profile();
+        PowerPolicy.Power power = store.power();
+        title.setText((profile.desk ? "Desk" : "Portable") + (power.level >= 0 ? " · " + power.level + " %" + (power.plugged ? " ⚡" : "") : ""));
+        String text = noticeText(profile.notice);
+        notice.setText(text);
+        notice.setVisibility(text == null ? View.GONE : View.VISIBLE);
+        applyScreen(profile, fresh == DisplayFormat.Freshness.OFFLINE || fresh == DisplayFormat.Freshness.NONE);
+
         String error = store.lastError();
         String id = store.displayId();
         footer.setText((id == null ? "" : "Display ID " + id + "\n") + DisplayService.FIRMWARE + " · protocol 1"
                 + (error == null ? "" : " · last error " + error));
+    }
+
+    private static String noticeText(PowerPolicy.Notice value) {
+        switch (value) {
+            case SAVING: return "Low battery: screen timeout and dimming to save power.";
+            case PAUSED: return "Bluetooth paused to protect the battery. Connect the charger to resume.";
+            case HOT: return "The phone is warm: screen dimmed.";
+            case FULL_ON_CHARGER: return "Battery full on the charger. Android apps cannot limit charging; see Settings.";
+            default: return null;
+        }
+    }
+
+    /** Screen-on flag, brightness (dimmed without fresh data) and burn-in pixel shift. */
+    private void applyScreen(PowerPolicy.Profile profile, boolean noFreshData) {
+        WindowManager.LayoutParams attributes = getWindow().getAttributes();
+        if (appliedKeepOn == null || appliedKeepOn != profile.keepScreenOn) {
+            if (profile.keepScreenOn) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            appliedKeepOn = profile.keepScreenOn;
+        }
+        float brightness = profile.keepScreenOn && noFreshData ? PowerPolicy.offlineBrightness(profile)
+                : profile.brightness < 0 ? WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE : profile.brightness;
+        if (brightness != appliedBrightness) {
+            attributes.screenBrightness = brightness;
+            getWindow().setAttributes(attributes);
+            appliedBrightness = brightness;
+        }
+        long now = SystemClock.elapsedRealtime();
+        if (!profile.pixelShift) {
+            root.setTranslationX(0);
+            root.setTranslationY(0);
+        } else if (now - lastShiftAt >= SHIFT_MS) {
+            lastShiftAt = now;
+            int range = dp(SHIFT_DP);
+            root.setTranslationX((float) ((Math.random() * 2 - 1) * range));
+            root.setTranslationY((float) ((Math.random() * 2 - 1) * range));
+        }
     }
 
     private static int levelColor(DisplayFormat.Level level) {
