@@ -74,3 +74,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Android display app build output (APK, local debug key)
+/android/build/
