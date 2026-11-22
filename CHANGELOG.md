@@ -23,6 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Auto, Desk and Portable modes, an always-on screen with burn-in
   protection, its own brightness setting and battery protection.
 
+### Fixed
+
+- A thread's context, token counts and model were shown as *Current* even when
+  Codex had since started a new turn, changed the thread's settings or model,
+  or compacted it – for example a weeks-old context reading after merely
+  opening the thread. They are now *Last known* until Codex measures them
+  again, and the context shows when it was actually measured.
+- Opening a thread or changing its settings moved its *Last activity* to now,
+  so an idle thread could jump to the top of its project and be shown on an
+  external display instead of the thread actually being worked on. Last
+  activity now comes only from work Codex recorded in the thread.
+
 ## 0.2.0 - 2026-11-18
 
 TokenBeacon now runs on Windows 11 as well as macOS. Tested on a real

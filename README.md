@@ -174,15 +174,22 @@ network.
 ## Reading the dashboard
 
 - **Current** values were just read from an active session or the local
-  database. **Last known** values are the latest ones Codex recorded and may be
-  out of date. **Unavailable (N/A)** means Codex didn't record the value or it
-  couldn't be read.
+  database, and Codex has recorded nothing since that could change them.
+  **Last known** values are the latest ones Codex recorded and may be out of
+  date – for example a thread's context after a new turn started, its settings
+  or model changed, or it was compacted, until Codex measures it again.
+  **Unavailable (N/A)** means Codex didn't record the value or it couldn't be
+  read.
 - **Context used** is how full a thread's context window is; context left is
   the rest (58% used = 42% left). The bar turns amber at 60% and red at 80%.
 - **Account limits** show how much of each usage window is used. Codex records
   limits only while you use it, so they are always *last known*. When a window
   has ended and no newer data exists, the card shows **Awaiting fresh data**
   instead of the old percentage. It updates after your next Codex request.
+- **Last activity** is when Codex last worked in the thread: a turn, messages,
+  reasoning, tool calls or compaction. Merely opening a thread or changing its
+  settings does not count, so it does not move the thread to the top or onto
+  an external display.
 - **Data checked** (top right) is when TokenBeacon last read the local Codex
   data; it checks every 5 seconds. **Recorded by Codex** on the limit cards is
   when Codex itself saved the limits, which can be much earlier.

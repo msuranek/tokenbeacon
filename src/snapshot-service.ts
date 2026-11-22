@@ -197,7 +197,11 @@ function buildThreadView(
   compaction: { count: number; lastAtMs: number | null } | null,
 ): ThreadView {
   const observedAt = telemetry?.tokenObservedAt ?? null;
-  const rolloutState: MetricState = telemetry?.sourceKind === "jsonl" ? "current" : "last-known";
+  const contextObservedAt = telemetry?.contextObservedAt ?? observedAt;
+  // Current only if nothing that can change the value was recorded after it.
+  const tokenState = measurementState(telemetry, observedAt, telemetry?.contextChangedAt ?? null);
+  const contextState = measurementState(telemetry, contextObservedAt, telemetry?.contextChangedAt ?? null);
+  const settingsState = measurementState(telemetry, telemetry?.modelObservedAt ?? null, telemetry?.settingsChangedAt ?? null);
   const rolloutSource = telemetry?.sourceKind ?? "rollout";
   const usage = normalizeUsage(telemetry?.usageRecord ?? telemetry?.tokenCountTotal ?? null);
   const lastContextTokens = telemetry?.lastTokenUsage?.total_tokens;
@@ -205,19 +209,19 @@ function buildThreadView(
   const hasContext = Number.isFinite(lastContextTokens) && Number.isFinite(contextWindow);
   const modelValue = telemetry?.model ?? thread.model;
   const modelState: MetricState = telemetry?.model
-    ? rolloutState
+    ? settingsState
     : thread.model
       ? "last-known"
       : "unavailable";
   const modelSource = telemetry?.model ? rolloutSource : "stateDb";
   const effortValue = telemetry?.reasoningEffort ?? thread.reasoningEffort;
   const effortState: MetricState = telemetry?.reasoningEffort
-    ? rolloutState
+    ? settingsState
     : thread.reasoningEffort
       ? "last-known"
       : "unavailable";
-  const activityMs = Math.max(thread.recencyAtMs, thread.catalogRecencyAtMs, thread.updatedAtMs);
-  const activityAt = epochToIso(activityMs);
+  const activity = lastActivity(thread, telemetry);
+  const activityAt = activity.at;
   const totalFallback = !usage && thread.tokensUsed > 0 ? thread.tokensUsed : null;
 
   const deepLink = threadDeepLink(thread.id);
@@ -237,34 +241,34 @@ function buildThreadView(
     contextUsedPercent: hasContext
       ? metric(
           contextUsedPercent(Number(lastContextTokens), Number(contextWindow)),
-          rolloutState,
-          observedAt,
+          contextState,
+          contextObservedAt,
           rolloutSource,
         )
       : unavailable(),
     contextTokens: metric(
       hasContext ? Number(lastContextTokens) : null,
-      rolloutState,
-      observedAt,
+      contextState,
+      contextObservedAt,
       rolloutSource,
     ),
     contextWindowTokens: metric(
       typeof contextWindow === "number" ? contextWindow : null,
-      rolloutState,
-      observedAt,
+      contextState,
+      contextObservedAt,
       rolloutSource,
     ),
-    inputTokens: metric(usage?.inputTokens, rolloutState, observedAt, rolloutSource),
-    cachedInputTokens: metric(usage?.cachedInputTokens, rolloutState, observedAt, rolloutSource),
-    outputTokens: metric(usage?.outputTokens, rolloutState, observedAt, rolloutSource),
+    inputTokens: metric(usage?.inputTokens, tokenState, observedAt, rolloutSource),
+    cachedInputTokens: metric(usage?.cachedInputTokens, tokenState, observedAt, rolloutSource),
+    outputTokens: metric(usage?.outputTokens, tokenState, observedAt, rolloutSource),
     reasoningOutputTokens: metric(
       usage?.reasoningOutputTokens,
-      rolloutState,
+      tokenState,
       observedAt,
       rolloutSource,
     ),
     totalTokens: usage
-      ? metric(usage.totalTokens, rolloutState, observedAt, rolloutSource)
+      ? metric(usage.totalTokens, tokenState, observedAt, rolloutSource)
       : metric(totalFallback, "last-known", activityAt, "stateDb"),
     compactionCount: compaction
       ? metric(compaction.count, "current", localObservationTime(), "historyDb")
@@ -273,10 +277,50 @@ function buildThreadView(
       compaction === null || compaction.lastAtMs === null
         ? unavailable()
         : metric(epochToIso(compaction.lastAtMs), "current", localObservationTime(), "historyDb"),
-    lastActivityAt: metric(activityAt, "current", localObservationTime(), "stateDb+desktopCatalog"),
+    lastActivityAt: metric(activityAt, activity.state, localObservationTime(), activity.source),
     status: unavailable(),
     openTarget: deepLink ? metric(deepLink, "current", null, "deep-link") : unavailable(),
   };
+}
+
+/**
+ * When the thread last had actual work (P-033): the latest of the start of its
+ * last turn (recency_at, the same in the desktop catalog) and the last work
+ * event in its rollout. updated_at is not used, because opening a thread or
+ * changing its settings (and other metadata changes) moves it. Only when
+ * neither is known – an older database without recency and no readable
+ * rollout – updated_at is the fallback, marked last-known.
+ */
+export function lastActivity(
+  thread: Pick<LocalThreadRow, "recencyAtMs" | "catalogRecencyAtMs" | "updatedAtMs">,
+  telemetry: Pick<RolloutTelemetry, "lastWorkAt"> | null,
+): { at: string | null; state: MetricState; source: string } {
+  const workMs = telemetry?.lastWorkAt ? Date.parse(telemetry.lastWorkAt) : Number.NaN;
+  const recencyMs = Math.max(thread.recencyAtMs || 0, thread.catalogRecencyAtMs || 0);
+  const best = Math.max(recencyMs, Number.isFinite(workMs) ? workMs : 0);
+  if (best > 0) return { at: epochToIso(best), state: "current", source: "stateDb+desktopCatalog+rollout" };
+  if (thread.updatedAtMs > 0) return { at: epochToIso(thread.updatedAtMs), state: "last-known", source: "stateDb.updated_at" };
+  return { at: null, state: "unavailable", source: "stateDb" };
+}
+
+/**
+ * Whether a value read from a rollout still describes the thread (D-011):
+ * "current" only for a plain, still-written rollout and only if no event that
+ * can change the value was recorded after it (a turn started, the settings or
+ * model changed, the context was compacted). Based on the rollout's own event
+ * times, never on the wall clock; nothing is estimated. Compressed (archived)
+ * rollouts stay "last-known".
+ */
+export function measurementState(
+  telemetry: RolloutTelemetry | null,
+  observedAt: string | null,
+  changedAt: string | null,
+): MetricState {
+  if (!telemetry || telemetry.sourceKind !== "jsonl") return "last-known";
+  const measured = observedAt ? Date.parse(observedAt) : Number.NaN;
+  if (!Number.isFinite(measured)) return "last-known";
+  const changed = changedAt ? Date.parse(changedAt) : Number.NaN;
+  return Number.isFinite(changed) && changed > measured ? "last-known" : "current";
 }
 
 function buildProjects(projectRows: LocalProjectRow[], threads: ThreadView[]): ProjectView[] {
