@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or compacted it – for example a weeks-old context reading after merely
   opening the thread. They are now *Last known* until Codex measures them
   again, and the context shows when it was actually measured.
+- Opening a thread or changing its settings moved its *Last activity* to now,
+  so an idle thread could jump to the top of its project and be shown on an
+  external display instead of the thread actually being worked on. Last
+  activity now comes only from work Codex recorded in the thread.
 
 ## 0.2.0 - 2026-11-18
 

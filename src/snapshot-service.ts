@@ -220,8 +220,8 @@ function buildThreadView(
     : thread.reasoningEffort
       ? "last-known"
       : "unavailable";
-  const activityMs = Math.max(thread.recencyAtMs, thread.catalogRecencyAtMs, thread.updatedAtMs);
-  const activityAt = epochToIso(activityMs);
+  const activity = lastActivity(thread, telemetry);
+  const activityAt = activity.at;
   const totalFallback = !usage && thread.tokensUsed > 0 ? thread.tokensUsed : null;
 
   const deepLink = threadDeepLink(thread.id);
@@ -277,10 +277,30 @@ function buildThreadView(
       compaction === null || compaction.lastAtMs === null
         ? unavailable()
         : metric(epochToIso(compaction.lastAtMs), "current", localObservationTime(), "historyDb"),
-    lastActivityAt: metric(activityAt, "current", localObservationTime(), "stateDb+desktopCatalog"),
+    lastActivityAt: metric(activityAt, activity.state, localObservationTime(), activity.source),
     status: unavailable(),
     openTarget: deepLink ? metric(deepLink, "current", null, "deep-link") : unavailable(),
   };
+}
+
+/**
+ * When the thread last had actual work (P-033): the latest of the start of its
+ * last turn (recency_at, the same in the desktop catalog) and the last work
+ * event in its rollout. updated_at is not used, because opening a thread or
+ * changing its settings (and other metadata changes) moves it. Only when
+ * neither is known – an older database without recency and no readable
+ * rollout – updated_at is the fallback, marked last-known.
+ */
+export function lastActivity(
+  thread: Pick<LocalThreadRow, "recencyAtMs" | "catalogRecencyAtMs" | "updatedAtMs">,
+  telemetry: Pick<RolloutTelemetry, "lastWorkAt"> | null,
+): { at: string | null; state: MetricState; source: string } {
+  const workMs = telemetry?.lastWorkAt ? Date.parse(telemetry.lastWorkAt) : Number.NaN;
+  const recencyMs = Math.max(thread.recencyAtMs || 0, thread.catalogRecencyAtMs || 0);
+  const best = Math.max(recencyMs, Number.isFinite(workMs) ? workMs : 0);
+  if (best > 0) return { at: epochToIso(best), state: "current", source: "stateDb+desktopCatalog+rollout" };
+  if (thread.updatedAtMs > 0) return { at: epochToIso(thread.updatedAtMs), state: "last-known", source: "stateDb.updated_at" };
+  return { at: null, state: "unavailable", source: "stateDb" };
 }
 
 /**

@@ -266,6 +266,7 @@ function emptyTelemetry(sourceKind: "jsonl" | "jsonl.zst"): RolloutTelemetry {
     contextObservedAt: null,
     contextChangedAt: null,
     settingsChangedAt: null,
+    lastWorkAt: null,
     rateLimitsByBucket: {},
     sourceKind,
   };
@@ -371,6 +372,7 @@ function applyLine(telemetry: RolloutTelemetry, line: string): void {
   const type = record.type;
   const payload = asRecord(record.payload);
   const timestamp = typeof record.timestamp === "string" ? record.timestamp : null;
+  if (isWorkEvent(type, payload.type)) telemetry.lastWorkAt = later(telemetry.lastWorkAt, timestamp);
 
   if (type === "turn_context") {
     if (typeof payload.model === "string") telemetry.model = payload.model;
@@ -412,6 +414,36 @@ function applyLine(telemetry: RolloutTelemetry, line: string): void {
     // Per bucket and per window; records without a valid window are ignored.
     recordRateLimits(telemetry.rateLimitsByBucket, payload.rate_limits ?? info.rate_limits, timestamp);
   }
+}
+
+/**
+ * Rollout events that are work in the thread, by type (top level) or by
+ * payload type (event_msg, response_item). A fixed list on purpose: metadata
+ * such as thread_settings_applied (written when a thread is merely opened or
+ * its settings change), world_state, session_meta, additional_tools and
+ * configuration_update – and any event type Codex adds later – never count as
+ * activity, so "Last activity" can only be too early, never too late.
+ */
+const WORK_TYPES = new Set(["turn_context", "compacted", "token_usage_record"]);
+const WORK_EVENT_MESSAGES = new Set(["task_started", "task_complete", "turn_aborted", "token_count", "item_completed"]);
+const WORK_RESPONSE_ITEMS = new Set([
+  "message",
+  "reasoning",
+  "function_call",
+  "function_call_output",
+  "custom_tool_call",
+  "custom_tool_call_output",
+  "web_search_call",
+  "tool_search_call",
+  "tool_search_output",
+  "compaction",
+]);
+
+export function isWorkEvent(type: unknown, payloadType: unknown): boolean {
+  if (typeof type !== "string") return false;
+  if (type === "event_msg") return typeof payloadType === "string" && WORK_EVENT_MESSAGES.has(payloadType);
+  if (type === "response_item") return typeof payloadType === "string" && WORK_RESPONSE_ITEMS.has(payloadType);
+  return WORK_TYPES.has(type);
 }
 
 /** The later of two ISO timestamps; an unparsable one is ignored. */

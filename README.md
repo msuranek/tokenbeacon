@@ -184,6 +184,10 @@ network.
   limits only while you use it, so they are always *last known*. When a window
   has ended and no newer data exists, the card shows **Awaiting fresh data**
   instead of the old percentage. It updates after your next Codex request.
+- **Last activity** is when Codex last worked in the thread: a turn, messages,
+  reasoning, tool calls or compaction. Merely opening a thread or changing its
+  settings does not count, so it does not move the thread to the top or onto
+  an external display.
 - **Data checked** (top right) is when TokenBeacon last read the local Codex
   data; it checks every 5 seconds. **Recorded by Codex** on the limit cards is
   when Codex itself saved the limits, which can be much earlier.

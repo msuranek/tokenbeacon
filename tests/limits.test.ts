@@ -46,6 +46,7 @@ function telemetry(events: Array<{ at: number; rateLimits: unknown }>, kind: "js
     contextObservedAt: null,
     contextChangedAt: null,
     settingsChangedAt: null,
+    lastWorkAt: null,
     rateLimitsByBucket: {},
     sourceKind: kind,
   };

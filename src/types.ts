@@ -130,6 +130,12 @@ export interface RolloutTelemetry {
   contextChangedAt: string | null;
   /** Latest thread_settings_applied (can change the model and reasoning effort). */
   settingsChangedAt: string | null;
+  /**
+   * Latest event that is actual work in the thread (a turn, messages,
+   * reasoning, tool calls, token counts, compaction). Opening the thread or
+   * changing its settings is not work and does not move it.
+   */
+  lastWorkAt: string | null;
   /** Latest valid window per limit bucket (limit_id) and window kind. */
   rateLimitsByBucket: Record<string, Partial<Record<LimitKind, RecordedLimitWindow>>>;
   sourceKind: "jsonl" | "jsonl.zst";
