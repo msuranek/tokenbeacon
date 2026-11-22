@@ -119,6 +119,17 @@ export interface RolloutTelemetry {
   lastTokenUsage: RawUsage | null;
   modelContextWindow: number | null;
   tokenObservedAt: string | null;
+  /** When the last context measurement (token_count) was recorded. */
+  contextObservedAt: string | null;
+  /**
+   * Latest event after which an earlier context measurement may no longer
+   * describe the thread: a turn starts (task_started, turn_context), its
+   * settings change (thread_settings_applied, which can switch the model and
+   * so the context window) or it is compacted.
+   */
+  contextChangedAt: string | null;
+  /** Latest thread_settings_applied (can change the model and reasoning effort). */
+  settingsChangedAt: string | null;
   /** Latest valid window per limit bucket (limit_id) and window kind. */
   rateLimitsByBucket: Record<string, Partial<Record<LimitKind, RecordedLimitWindow>>>;
   sourceKind: "jsonl" | "jsonl.zst";

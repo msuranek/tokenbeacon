@@ -43,6 +43,9 @@ function telemetry(events: Array<{ at: number; rateLimits: unknown }>, kind: "js
     lastTokenUsage: null,
     modelContextWindow: null,
     tokenObservedAt: null,
+    contextObservedAt: null,
+    contextChangedAt: null,
+    settingsChangedAt: null,
     rateLimitsByBucket: {},
     sourceKind: kind,
   };

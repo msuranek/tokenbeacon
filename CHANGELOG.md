@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with their freshness, following the documented `device-state/v1`
   protocol. The display firmware is not released yet.
 
+### Fixed
+
+- A thread's context, token counts and model were shown as *Current* even when
+  Codex had since started a new turn, changed the thread's settings or model,
+  or compacted it – for example a weeks-old context reading after merely
+  opening the thread. They are now *Last known* until Codex measures them
+  again, and the context shows when it was actually measured.
+
 ## 0.2.0 - 2026-11-18
 
 TokenBeacon now runs on Windows 11 as well as macOS. Tested on a real

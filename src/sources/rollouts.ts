@@ -263,6 +263,9 @@ function emptyTelemetry(sourceKind: "jsonl" | "jsonl.zst"): RolloutTelemetry {
     lastTokenUsage: null,
     modelContextWindow: null,
     tokenObservedAt: null,
+    contextObservedAt: null,
+    contextChangedAt: null,
+    settingsChangedAt: null,
     rateLimitsByBucket: {},
     sourceKind,
   };
@@ -373,6 +376,18 @@ function applyLine(telemetry: RolloutTelemetry, line: string): void {
     if (typeof payload.model === "string") telemetry.model = payload.model;
     if (typeof payload.effort === "string") telemetry.reasoningEffort = payload.effort;
     telemetry.modelObservedAt = timestamp;
+    telemetry.contextChangedAt = later(telemetry.contextChangedAt, timestamp);
+    return;
+  }
+
+  if (type === "compacted" || (type === "event_msg" && payload.type === "task_started")) {
+    telemetry.contextChangedAt = later(telemetry.contextChangedAt, timestamp);
+    return;
+  }
+
+  if (type === "event_msg" && payload.type === "thread_settings_applied") {
+    telemetry.contextChangedAt = later(telemetry.contextChangedAt, timestamp);
+    telemetry.settingsChangedAt = later(telemetry.settingsChangedAt, timestamp);
     return;
   }
 
@@ -393,9 +408,17 @@ function applyLine(telemetry: RolloutTelemetry, line: string): void {
       telemetry.modelContextWindow = info.model_context_window;
     }
     telemetry.tokenObservedAt = timestamp;
+    if (last) telemetry.contextObservedAt = timestamp;
     // Per bucket and per window; records without a valid window are ignored.
     recordRateLimits(telemetry.rateLimitsByBucket, payload.rate_limits ?? info.rate_limits, timestamp);
   }
+}
+
+/** The later of two ISO timestamps; an unparsable one is ignored. */
+function later(current: string | null, next: string | null): string | null {
+  if (next === null || !Number.isFinite(Date.parse(next))) return current;
+  if (current === null || !Number.isFinite(Date.parse(current))) return next;
+  return Date.parse(next) > Date.parse(current) ? next : current;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

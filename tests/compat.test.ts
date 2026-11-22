@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import {
+  appendFileSync,
   chmodSync,
   mkdirSync,
   readdirSync,
@@ -13,7 +14,7 @@ import { request as httpRequest } from "node:http";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { createMonitorServer, listenLoopback } from "../src/http-server.ts";
-import { SnapshotService } from "../src/snapshot-service.ts";
+import { measurementState, SnapshotService } from "../src/snapshot-service.ts";
 import { LocalDataSource } from "../src/sources/local-data.ts";
 import { MAX_DECOMPRESSED_BYTES, parseZstdLines, RolloutCache, resolveRolloutPath } from "../src/sources/rollouts.ts";
 import { zstdCompressSync } from "node:zlib";
@@ -533,5 +534,71 @@ describe("server with an empty installation", () => {
     assert.ok(!healthResponse.body.includes(root));
     const page = await get("/");
     assert.equal(page.status, 503);
+  });
+});
+
+describe("measurement freshness (D-011)", () => {
+  const event = (at: string, type: string, payload: Record<string, unknown> = {}) =>
+    `${JSON.stringify(type === "compacted" ? { timestamp: at, type, payload } : { timestamp: at, type: "event_msg", payload: { type, ...payload } })}\n`;
+  const tokenCount = (at: string, last: number) =>
+    event(at, "token_count", { info: { total_token_usage: { total_tokens: 5_000 }, last_token_usage: { total_tokens: last }, model_context_window: 200_000 } });
+
+  test("a value is current only until something that can change it is recorded", async (t) => {
+    const fixture = createFixtureCodexHome();
+    t.after(fixture.cleanup);
+    const file = path.join(fixture.codexHome, "sessions", "2026", "11", "16", "rollout-explicit.jsonl");
+    const service = new SnapshotService(new LocalDataSource(fixture.codexHome), undefined, () => NOW_MS);
+    const explicit = async () => allThreads(await service.refresh()).find((thread) => thread.id === IDS.threadExplicit)!;
+
+    let thread = await explicit();
+    const measured = thread.contextUsedPercent.value;
+    assert.equal(thread.contextUsedPercent.state, "current", "measured after the turn started");
+    assert.equal(thread.model.state, "current");
+
+    // Opening the thread or changing its settings (no turn): the old reading may no longer apply.
+    appendFileSync(file, event("2026-11-16T12:00:00.000Z", "thread_settings_applied", { thread_settings: { model: "gpt-fixture" } }));
+    thread = await explicit();
+    assert.equal(thread.contextUsedPercent.state, "last-known");
+    assert.equal(thread.contextUsedPercent.observedAt, "2026-11-16T11:00:02.000Z", "the time of the measurement, not of the change");
+    assert.equal(thread.contextUsedPercent.value, measured, "the value is kept, not estimated");
+    assert.equal(thread.contextTokens.value, 50_000);
+    assert.equal(thread.contextWindowTokens.state, "last-known");
+    assert.equal(thread.totalTokens.state, "last-known");
+    assert.equal(thread.model.state, "last-known", "settings can switch the model");
+
+    // A new turn starts and measures again: current.
+    appendFileSync(file, event("2026-11-16T12:00:01.000Z", "task_started"));
+    appendFileSync(file, `${JSON.stringify({ timestamp: "2026-11-16T12:00:02.000Z", type: "turn_context", payload: { model: "gpt-fixture", effort: "high" } })}\n`);
+    thread = await explicit();
+    assert.equal(thread.contextUsedPercent.state, "last-known", "a running turn before its first measurement");
+    assert.equal(thread.model.state, "current", "the turn recorded its model after the settings");
+    appendFileSync(file, tokenCount("2026-11-16T12:00:05.000Z", 80_000));
+    thread = await explicit();
+    assert.equal(thread.contextUsedPercent.state, "current");
+    assert.equal(thread.contextTokens.value, 80_000);
+    assert.equal(thread.contextUsedPercent.observedAt, "2026-11-16T12:00:05.000Z");
+
+    // A token_usage_record alone does not move the context measurement time.
+    appendFileSync(file, `${JSON.stringify({ timestamp: "2026-11-16T12:00:06.000Z", type: "token_usage_record", payload: { thread_token_usage: { total_tokens: 6_000 } } })}\n`);
+    thread = await explicit();
+    assert.equal(thread.contextUsedPercent.observedAt, "2026-11-16T12:00:05.000Z");
+    assert.equal(thread.contextUsedPercent.state, "current");
+
+    // Compaction changes the context.
+    appendFileSync(file, event("2026-11-16T12:00:07.000Z", "compacted", { message: "" }));
+    thread = await explicit();
+    assert.equal(thread.contextUsedPercent.state, "last-known");
+  });
+
+  test("archived (compressed) rollouts stay last known; unreadable times are not current", () => {
+    const base = { sourceKind: "jsonl" } as Parameters<typeof measurementState>[0];
+    assert.equal(measurementState(null, "2026-11-16T11:00:00Z", null), "last-known");
+    assert.equal(measurementState({ ...base!, sourceKind: "jsonl.zst" }, "2026-11-16T11:00:00Z", null), "last-known");
+    assert.equal(measurementState(base, null, null), "last-known");
+    assert.equal(measurementState(base, "garbage", null), "last-known");
+    assert.equal(measurementState(base, "2026-11-16T11:00:00Z", null), "current");
+    assert.equal(measurementState(base, "2026-11-16T11:00:00Z", "2026-11-16T11:00:00Z"), "current", "same instant");
+    assert.equal(measurementState(base, "2026-11-16T11:00:00Z", "2026-11-16T11:00:00.001Z"), "last-known");
+    assert.equal(measurementState(base, "2026-11-16T11:00:00Z", "garbage"), "current");
   });
 });
