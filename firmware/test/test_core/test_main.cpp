@@ -12,6 +12,7 @@
 #include "tb_line_buffer.h"
 #include "tb_model.h"
 #include "tb_protocol.h"
+#include "tb_tx_queue.h"
 
 using namespace tb;
 
@@ -271,6 +272,42 @@ void test_now_tag_only_while_data_is_fresh() {
 
 // --- formatting -------------------------------------------------------------------
 
+void test_tx_queue_sends_long_lines_in_pieces() {
+  tb::TxQueue queue;
+  // A hello answer is longer than the 64-byte CDC FIFO: it goes out in pieces, intact and in order.
+  std::string hello(120, 'h');
+  hello.back() = '\n';
+  std::string alive = "{\"tb\":1,\"t\":\"alive\",\"seq\":0,\"up\":1}\n";
+  TEST_ASSERT_TRUE(queue.push(hello.data(), hello.size()));
+  TEST_ASSERT_TRUE(queue.push(alive.data(), alive.size()));
+  std::string sent;
+  for (int round = 0; round < 10 && queue.pending() > 0; ++round) {
+    const char* data = nullptr;
+    const size_t n = queue.peek(64, &data);
+    TEST_ASSERT_TRUE(n <= 64);
+    // The host may accept fewer bytes than offered.
+    const size_t accepted = round == 1 ? n / 2 : n;
+    sent.append(data, accepted);
+    queue.consume(accepted);
+  }
+  TEST_ASSERT_EQUAL_STRING((hello + alive).c_str(), sent.c_str());
+  TEST_ASSERT_EQUAL_UINT32(0, queue.pending());
+
+  // A host that stops reading: the queue fills, new lines are dropped, nothing grows.
+  std::string line(100, 'x');
+  size_t queued = 0;
+  for (int i = 0; i < 10; ++i) queued += queue.push(line.data(), line.size()) ? 1 : 0;
+  TEST_ASSERT_EQUAL_UINT32(tb::TxQueue::kCapacity / 100, queued);
+  TEST_ASSERT_FALSE(queue.push(line.data(), tb::TxQueue::kCapacity + 1));
+  TEST_ASSERT_FALSE(queue.push(line.data(), 0));
+  // Draining makes room again; clear() drops everything (host gone).
+  const char* data = nullptr;
+  queue.consume(queue.peek(250, &data));
+  TEST_ASSERT_TRUE(queue.push(line.data(), line.size()));
+  queue.clear();
+  TEST_ASSERT_EQUAL_UINT32(0, queue.pending());
+}
+
 void test_format() {
   char text[16];
   formatDuration(45, text, sizeof(text));
@@ -306,6 +343,7 @@ int main() {
   RUN_TEST(test_model_sequence_order_wrap_and_reconnect);
   RUN_TEST(test_model_handles_millis_wraparound);
   RUN_TEST(test_now_tag_only_while_data_is_fresh);
+  RUN_TEST(test_tx_queue_sends_long_lines_in_pieces);
   RUN_TEST(test_format);
   return UNITY_END();
 }

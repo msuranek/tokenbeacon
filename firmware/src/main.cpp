@@ -11,6 +11,7 @@
 #include "tb_line_buffer.h"
 #include "tb_model.h"
 #include "tb_protocol.h"
+#include "tb_tx_queue.h"
 #include "ui.h"
 
 #ifndef TB_FW_VERSION
@@ -32,6 +33,7 @@ constexpr uint32_t kErrorIntervalMs = 1000;
 constexpr uint8_t kRotation = 0;
 
 USBCDC usbSerial;
+tb::TxQueue txQueue;
 TFT_eSPI tft;
 tb::LineBuffer lineBuffer;
 tb::DisplayModel model;
@@ -45,8 +47,22 @@ bool buttonWasDown = false;
 uint32_t buttonChangedMs = 0;
 bool dirty = true;
 
+// The CDC transmit FIFO holds 64 bytes: lines are queued and drained in
+// pieces that fit, never blocking the screen (see tb_tx_queue.h).
 void send(const char* line, size_t length) {
-  if (length > 0 && usbSerial.availableForWrite() >= static_cast<int>(length)) usbSerial.write(reinterpret_cast<const uint8_t*>(line), length);
+  if (usbSerial) txQueue.push(line, length);
+}
+
+void drainTx() {
+  if (!usbSerial) {
+    txQueue.clear();
+    return;
+  }
+  const int space = usbSerial.availableForWrite();
+  if (space <= 0 || txQueue.pending() == 0) return;
+  const char* data = nullptr;
+  const size_t count = txQueue.peek(static_cast<size_t>(space), &data);
+  txQueue.consume(usbSerial.write(reinterpret_cast<const uint8_t*>(data), count));
 }
 
 void sendError(tb::ParseError error) {
@@ -135,6 +151,7 @@ void setup() {
 void loop() {
   const uint32_t now = millis();
   readUsb();
+  drainTx();
   readButton(now);
 
   if (!usbSerial) hostConnected = false;  // port closed by the host
