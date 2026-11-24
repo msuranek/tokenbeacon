@@ -272,6 +272,26 @@ void test_now_tag_only_while_data_is_fresh() {
 
 // --- formatting -------------------------------------------------------------------
 
+void test_clock_read_before_the_state_is_not_offline() {
+  // loop() reads millis(), then the USB data: the state is stamped a few ms
+  // later than the time the frame is drawn with. That must stay Live, not
+  // wrap around to Offline (seen on the board every 10 s heartbeat).
+  DisplayModel model;
+  StateMessage state;
+  HostMessage message;
+  const char* line = "{\"tb\":1,\"t\":\"state\",\"seq\":1,\"five\":{\"st\":\"unavailable\"},\"week\":{\"st\":\"unavailable\"},\"ctx\":{\"st\":\"current\",\"used\":17,\"age\":10},\"next\":10}\n";
+  TEST_ASSERT_TRUE(parseHostLine(line, strlen(line), message) == ParseError::None);
+  TEST_ASSERT_TRUE(model.apply(message.state, 100005));
+  TEST_ASSERT_TRUE(model.link(100000) == Link::Live);
+  TEST_ASSERT_EQUAL_INT64(0, model.secondsSinceUpdate(100000));
+  TEST_ASSERT_TRUE(model.context(100000).ageSec == 10);
+  // Real wraparound of millis() still ages normally.
+  DisplayModel wrapped;
+  TEST_ASSERT_TRUE(wrapped.apply(message.state, 0xFFFFFF00u));
+  TEST_ASSERT_TRUE(wrapped.link(0xFFFFFF00u + 40000u) == Link::Stale);
+  TEST_ASSERT_TRUE(wrapped.link(0xFFFFFF00u + 130000u) == Link::Offline);
+}
+
 void test_tx_queue_sends_long_lines_in_pieces() {
   tb::TxQueue queue;
   // A hello answer is longer than the 64-byte CDC FIFO: it goes out in pieces, intact and in order.
@@ -343,6 +363,7 @@ int main() {
   RUN_TEST(test_model_sequence_order_wrap_and_reconnect);
   RUN_TEST(test_model_handles_millis_wraparound);
   RUN_TEST(test_now_tag_only_while_data_is_fresh);
+  RUN_TEST(test_clock_read_before_the_state_is_not_offline);
   RUN_TEST(test_tx_queue_sends_long_lines_in_pieces);
   RUN_TEST(test_format);
   return UNITY_END();

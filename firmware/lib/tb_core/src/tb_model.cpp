@@ -20,7 +20,7 @@ bool DisplayModel::apply(const StateMessage& message, uint32_t nowMs) {
 
 Link DisplayModel::link(uint32_t nowMs) const {
   if (!hasState_) return Link::Waiting;
-  const uint32_t since = nowMs - receivedMs_;
+  const uint32_t since = elapsedMs(nowMs);
   if (since <= kStaleAfterMs) return Link::Live;
   if (since <= kOfflineAfterMs) return Link::Stale;
   return Link::Offline;

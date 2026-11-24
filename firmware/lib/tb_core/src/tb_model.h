@@ -55,7 +55,17 @@ class DisplayModel {
 
  private:
   FieldView limitView(const LimitValue& value, uint32_t nowMs) const;
-  int64_t elapsedSec(uint32_t nowMs) const { return static_cast<int64_t>(static_cast<uint32_t>(nowMs - receivedMs_) / 1000u); }
+  /**
+   * Milliseconds since the last state. A `nowMs` taken just before the state
+   * arrived (loop() reads the clock, then the USB data) would wrap around to
+   * ~49 days and show "No connection" for a frame; such a time counts as 0.
+   * Real millis() wraparound (elapsed < 2^31 ms) still works.
+   */
+  uint32_t elapsedMs(uint32_t nowMs) const {
+    const uint32_t since = nowMs - receivedMs_;
+    return since > 0x80000000u ? 0 : since;
+  }
+  int64_t elapsedSec(uint32_t nowMs) const { return static_cast<int64_t>(elapsedMs(nowMs) / 1000u); }
 
   StateMessage state_;
   bool hasState_ = false;
