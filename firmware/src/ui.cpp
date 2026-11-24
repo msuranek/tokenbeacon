@@ -142,8 +142,12 @@ void drawStatus(TFT_eSprite& s, const tb::DisplayModel& model, uint32_t nowMs, b
   s.setTextDatum(ML_DATUM);
   s.setTextColor(kText, kBackground);
   s.drawString(text, kMargin + 14, 11);
+  // The link state has priority: the firmware version is shown only where it
+  // fits next to it (e.g. not beside "No connection 12m" on 170 px).
+  const int statusRight = kMargin + 14 + s.textWidth(text, 2);
   snprintf(text, sizeof(text), "fw %s", firmware);
   s.setTextFont(1);
+  if (statusRight + 8 + s.textWidth(text, 1) > kWidth - kMargin) return;
   s.setTextDatum(MR_DATUM);
   s.setTextColor(kFaint, kBackground);
   s.drawString(text, kWidth - kMargin, 11);
