@@ -16,4 +16,7 @@ Level contextLevel(int percentUsed);
 /** Compact duration: "45s", "12m", "2h 12m", "3d 8h". Negative -> "". */
 void formatDuration(int64_t seconds, char* out, size_t capacity);
 
+/** "measured 5h 46m ago" (P-036 a). Negative -> "". */
+void formatMeasuredAgo(int64_t seconds, char* out, size_t capacity);
+
 }  // namespace tb

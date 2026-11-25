@@ -13,6 +13,8 @@
 #include "tb_model.h"
 #include "tb_protocol.h"
 #include "tb_tx_queue.h"
+#include "tb_button.h"
+#include "tb_text.h"
 
 using namespace tb;
 
@@ -38,9 +40,9 @@ void tearDown() {}
 
 // --- protocol -----------------------------------------------------------------
 
-void test_host_vectors() {
-  const std::vector<std::string> vectors = readLines("host-to-device.jsonl");
-  TEST_ASSERT_GREATER_OR_EQUAL(20, vectors.size());
+static void checkHostVectors(const char* file, size_t minimum) {
+  const std::vector<std::string> vectors = readLines(file);
+  TEST_ASSERT_GREATER_OR_EQUAL(minimum, vectors.size());
   for (const std::string& vector : vectors) {
     JsonDocument doc;
     TEST_ASSERT_EQUAL(DeserializationError::Ok, deserializeJson(doc, vector).code());
@@ -52,6 +54,11 @@ void test_host_vectors() {
     TEST_ASSERT_EQUAL_STRING_MESSAGE(expect.c_str(), errorCode(error), note.c_str());
   }
 }
+
+void test_host_vectors() { checkHostVectors("host-to-device.jsonl", 20); }
+
+// This firmware has the "title" capability, so it applies the title rules too.
+void test_title_vectors() { checkHostVectors("title-host-to-device.jsonl", 10); }
 
 void test_state_cases_parse_to_the_encoded_values() {
   JsonDocument doc;
@@ -106,7 +113,7 @@ void test_device_lines_match_the_protocol() {
   char buffer[160];
   TEST_ASSERT_GREATER_THAN(0, buildHello(buffer, sizeof(buffer), "5f1c9a2e", "0.1.0", "c3a9f01b"));
   TEST_ASSERT_EQUAL_STRING(
-      "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[1],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\n",
+      "{\"tb\":1,\"t\":\"hello\",\"dev\":\"tokenbeacon-display\",\"fw\":\"0.1.0\",\"proto\":[1],\"caps\":[\"title\"],\"nonce\":\"5f1c9a2e\",\"id\":\"c3a9f01b\"}\n",
       buffer);
   buildAlive(buffer, sizeof(buffer), 128, 3605);
   TEST_ASSERT_EQUAL_STRING("{\"tb\":1,\"t\":\"alive\",\"seq\":128,\"up\":3605}\n", buffer);
@@ -292,6 +299,127 @@ void test_clock_read_before_the_state_is_not_offline() {
   TEST_ASSERT_TRUE(wrapped.link(0xFFFFFF00u + 130000u) == Link::Offline);
 }
 
+// --- thread title, text, button ---------------------------------------------------
+
+static StateMessage stateWithTitle(const char* title, const char* st = "current") {
+  std::string line = std::string("{\"tb\":1,\"t\":\"state\",\"seq\":1,\"five\":{\"st\":\"unavailable\"},\"week\":{\"st\":\"unavailable\"},\"ctx\":{\"st\":\"") + st +
+                     "\"" + (std::string(st) == "unavailable" ? "" : ",\"used\":17") +
+                     (title ? std::string(",\"title\":\"") + title + "\"" : std::string()) + "},\"next\":10}\n";
+  HostMessage message;
+  TEST_ASSERT_TRUE(parseHostLine(line.data(), line.size(), message) == ParseError::None);
+  return message.state;
+}
+
+void test_title_shown_only_with_its_live_context() {
+  DisplayModel model;
+  const char* czech = "Najít příčinu chybějících zástupů";
+  TEST_ASSERT_TRUE(model.apply(stateWithTitle(czech), 1000));
+  TEST_ASSERT_EQUAL_STRING(czech, model.title(1000));
+  TEST_ASSERT_EQUAL_STRING(czech, model.title(1000 + kStaleAfterMs));
+  TEST_ASSERT_NULL(model.title(1001 + kStaleAfterMs));  // stale: hidden
+  // A new state without a title (feature off on the host) removes it at once.
+  model.onHostHello(2000);
+  TEST_ASSERT_TRUE(model.apply(stateWithTitle(czech), 2000));
+  TEST_ASSERT_TRUE(model.apply([] { StateMessage m = stateWithTitle(nullptr); m.seq = 2; return m; }(), 3000));
+  TEST_ASSERT_NULL(model.title(3000));
+  // A new hello and a closed port drop it too; an unavailable context never has one.
+  model.onHostHello(4000);
+  TEST_ASSERT_TRUE(model.apply(stateWithTitle(czech), 4000));
+  model.onHostHello(4100);
+  TEST_ASSERT_NULL(model.title(4100));
+  TEST_ASSERT_TRUE(model.apply(stateWithTitle(czech), 4200));
+  model.onHostGone();
+  TEST_ASSERT_NULL(model.title(4200));
+  model.onHostHello(5000);
+  TEST_ASSERT_TRUE(model.apply(stateWithTitle("ignored", "unavailable"), 5000));
+  TEST_ASSERT_NULL(model.title(5000));
+}
+
+void test_utf8_validation() {
+  uint32_t cp = 0;
+  TEST_ASSERT_EQUAL(2, utf8Decode("\xC5\x99", 2, 0, cp));  // ř
+  TEST_ASSERT_EQUAL_HEX32(0x159, cp);
+  TEST_ASSERT_EQUAL(4, utf8Decode("\xF0\x9F\x9A\x80", 4, 0, cp));  // rocket
+  TEST_ASSERT_EQUAL(0, utf8Decode("\xC5", 1, 0, cp));                 // truncated
+  TEST_ASSERT_EQUAL(0, utf8Decode("\xC0\xAF", 2, 0, cp));             // overlong
+  TEST_ASSERT_EQUAL(0, utf8Decode("\xED\xA0\x80", 3, 0, cp));        // surrogate
+  TEST_ASSERT_TRUE(isTitleText("ok", 2));
+  TEST_ASSERT_FALSE(isTitleText("  ", 2));
+  TEST_ASSERT_FALSE(isTitleText("a\tb", 3));
+  TEST_ASSERT_FALSE(isTitleText("\xC2\x85", 2));  // C1 control
+  std::string max(kMaxTitleBytes, 'a');
+  TEST_ASSERT_TRUE(isTitleText(max.data(), max.size()));
+  TEST_ASSERT_FALSE(isTitleText(max.data(), max.size() + 1));
+}
+
+// Fixed-width test font: every character 10 px wide.
+static int fixedAdvance(uint32_t, void*) { return 10; }
+
+static std::string lineText(const std::string& text, const LineSpan& span) {
+  return text.substr(span.start, span.length) + (span.ellipsis ? "..." : "");
+}
+
+void test_layout_wraps_by_width_and_ends_with_dots() {
+  LineSpan lines[3];
+  const std::string shortText = "Fix proxies";
+  TEST_ASSERT_EQUAL(1, layoutText(shortText.data(), shortText.size(), 200, 2, fixedAdvance, nullptr, lines));
+  TEST_ASSERT_EQUAL_STRING("Fix proxies", lineText(shortText, lines[0]).c_str());
+  // Two lines of 10 characters: wraps at a word, the rest ends with "...".
+  const std::string czech = "Najít příčinu chybějících zástupů v Košicích";
+  const size_t n = layoutText(czech.data(), czech.size(), 100, 2, fixedAdvance, nullptr, lines);
+  TEST_ASSERT_EQUAL(2, n);
+  TEST_ASSERT_EQUAL_STRING("Najít ", lineText(czech, lines[0]).c_str());
+  TEST_ASSERT_TRUE(lines[1].ellipsis);
+  TEST_ASSERT_EQUAL_STRING("příčinu...", lineText(czech, lines[1]).c_str());
+  // Never split a UTF-8 sequence, even without spaces.
+  const std::string zz = "žžžžžžžžžžžžžžžžžžžž";  // 20 x 2 bytes
+  TEST_ASSERT_EQUAL(1, layoutText(zz.data(), zz.size(), 60, 1, fixedAdvance, nullptr, lines));
+  TEST_ASSERT_EQUAL(0, lines[0].length % 2);
+  TEST_ASSERT_EQUAL_STRING("žžž...", lineText(zz, lines[0]).c_str());
+  // Joiners take no space; an exact fit has no dots.
+  const std::string exact = "abcdefghij";
+  layoutText(exact.data(), exact.size(), 100, 1, fixedAdvance, nullptr, lines);
+  TEST_ASSERT_FALSE(lines[0].ellipsis);
+}
+
+void test_button_short_long_and_debounce() {
+  Button button;
+  uint32_t t = 0xFFFFFF00u;  // across millis() wraparound
+  auto feed = [&](bool down, uint32_t ms) {
+    Button::Event last = Button::Event::None;
+    for (uint32_t i = 0; i < ms; i += 5) {
+      const Button::Event e = button.update(down, t += 5);
+      if (e != Button::Event::None) last = e;
+    }
+    return last;
+  };
+  // Bounce shorter than the debounce time is ignored.
+  TEST_ASSERT_TRUE(feed(true, 10) == Button::Event::None);
+  TEST_ASSERT_TRUE(feed(false, 100) == Button::Event::None);
+  // Short press.
+  TEST_ASSERT_TRUE(feed(true, 200) == Button::Event::None);
+  TEST_ASSERT_TRUE(feed(false, 100) == Button::Event::Short);
+  // 700-1000 ms: nothing.
+  TEST_ASSERT_TRUE(feed(true, 850) == Button::Event::None);
+  TEST_ASSERT_TRUE(feed(false, 100) == Button::Event::None);
+  // Long press fires once while held, nothing on release, no repeat however long it is held.
+  int longs = 0;
+  for (int i = 0; i < 600; ++i) longs += button.update(true, t += 5) == Button::Event::Long ? 1 : 0;
+  TEST_ASSERT_EQUAL(1, longs);
+  TEST_ASSERT_TRUE(feed(false, 100) == Button::Event::None);
+}
+
+void test_deferred_write() {
+  DeferredWrite write(5000);
+  uint32_t t = 0xFFFFF000u;
+  TEST_ASSERT_FALSE(write.due(t));
+  write.changed(t);
+  write.changed(t += 2000);  // changed again: waits 5 s from the last change
+  TEST_ASSERT_FALSE(write.due(t += 4000));
+  TEST_ASSERT_TRUE(write.due(t += 1000));
+  TEST_ASSERT_FALSE(write.due(t += 10000));
+}
+
 void test_tx_queue_sends_long_lines_in_pieces() {
   tb::TxQueue queue;
   // A hello answer is longer than the 64-byte CDC FIFO: it goes out in pieces, intact and in order.
@@ -329,6 +457,11 @@ void test_tx_queue_sends_long_lines_in_pieces() {
 }
 
 void test_format() {
+  char measured[32];
+  formatMeasuredAgo(20760, measured, sizeof(measured));
+  TEST_ASSERT_EQUAL_STRING("measured 5h 46m ago", measured);
+  formatMeasuredAgo(-1, measured, sizeof(measured));
+  TEST_ASSERT_EQUAL_STRING("", measured);
   char text[16];
   formatDuration(45, text, sizeof(text));
   TEST_ASSERT_EQUAL_STRING("45s", text);
@@ -365,6 +498,12 @@ int main() {
   RUN_TEST(test_now_tag_only_while_data_is_fresh);
   RUN_TEST(test_clock_read_before_the_state_is_not_offline);
   RUN_TEST(test_tx_queue_sends_long_lines_in_pieces);
+  RUN_TEST(test_title_vectors);
+  RUN_TEST(test_title_shown_only_with_its_live_context);
+  RUN_TEST(test_utf8_validation);
+  RUN_TEST(test_layout_wraps_by_width_and_ends_with_dots);
+  RUN_TEST(test_button_short_long_and_debounce);
+  RUN_TEST(test_deferred_write);
   RUN_TEST(test_format);
   return UNITY_END();
 }

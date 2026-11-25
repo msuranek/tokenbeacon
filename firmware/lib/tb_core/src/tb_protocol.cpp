@@ -109,6 +109,15 @@ bool readContext(JsonVariantConst value, ContextValue& out) {
   if (!readInteger(object["used"], 0, 100, used)) return false;
   if (!readOptionalCount(object, "age", out.age)) return false;
   out.used = static_cast<int16_t>(used);
+  // Optional thread title: kept only when it is valid as a whole (never cut here).
+  JsonVariantConst title = object["title"];
+  if (!title.isUnbound()) {
+    if (!title.is<JsonString>()) return false;
+    const JsonString text = title.as<JsonString>();
+    if (!isTitleText(text.c_str(), text.size())) return false;
+    memcpy(out.title, text.c_str(), text.size());
+    out.title[text.size()] = '\0';
+  }
   return true;
 }
 
@@ -178,7 +187,7 @@ ParseError parseHostLine(const char* line, size_t length, HostMessage& out) {
 
 size_t buildHello(char* out, size_t capacity, const char* nonce, const char* firmware, const char* deviceId) {
   const int n = snprintf(out, capacity,
-                         "{\"tb\":1,\"t\":\"hello\",\"dev\":\"%s\",\"fw\":\"%s\",\"proto\":[1],\"nonce\":\"%s\",\"id\":\"%s\"}\n",
+                         "{\"tb\":1,\"t\":\"hello\",\"dev\":\"%s\",\"fw\":\"%s\",\"proto\":[1],\"caps\":[\"title\"],\"nonce\":\"%s\",\"id\":\"%s\"}\n",
                          kDeviceName, firmware, nonce, deviceId);
   return n > 0 && static_cast<size_t>(n) < capacity ? static_cast<size_t>(n) : 0;
 }

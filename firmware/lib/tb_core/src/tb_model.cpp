@@ -2,7 +2,15 @@
 
 namespace tb {
 
-void DisplayModel::onHostHello(uint32_t) { hasSeq_ = false; }
+void DisplayModel::onHostHello(uint32_t) {
+  hasSeq_ = false;
+  state_.ctx.title[0] = '\0';
+}
+
+const char* DisplayModel::title(uint32_t nowMs) const {
+  if (!hasState_ || state_.ctx.st == ValueState::Unavailable || state_.ctx.title[0] == '\0') return nullptr;
+  return link(nowMs) == Link::Live ? state_.ctx.title : nullptr;
+}
 
 bool DisplayModel::apply(const StateMessage& message, uint32_t nowMs) {
   if (hasSeq_) {

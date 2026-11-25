@@ -38,8 +38,14 @@ struct FieldView {
 
 class DisplayModel {
  public:
-  /** The host (re)connected: its sequence numbers start again. Values are kept. */
+  /**
+   * The host (re)connected: its sequence numbers start again. Values are kept,
+   * the thread title is dropped until a state carries it again.
+   */
   void onHostHello(uint32_t nowMs);
+
+  /** The host closed the port: the thread title is dropped at once. */
+  void onHostGone() { state_.ctx.title[0] = '\0'; }
 
   /** Applies a state message; returns false for an old or repeated sequence number. */
   bool apply(const StateMessage& message, uint32_t nowMs);
@@ -50,6 +56,12 @@ class DisplayModel {
   FieldView five(uint32_t nowMs) const { return limitView(state_.five, nowMs); }
   FieldView week(uint32_t nowMs) const { return limitView(state_.week, nowMs); }
   FieldView context(uint32_t nowMs) const;
+  /**
+   * The name of the thread the context belongs to, only while that context is
+   * shown with live data (at most kStaleAfterMs old); otherwise nullptr. It
+   * always comes from the same state message as the context value.
+   */
+  const char* title(uint32_t nowMs) const;
   /** Whole seconds since the last state message, or -1 before the first one. */
   int64_t secondsSinceUpdate(uint32_t nowMs) const;
 

@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tb_text.h"
+
 namespace tb {
 
 constexpr size_t kMaxLineBytes = 512;
@@ -32,6 +34,8 @@ struct ContextValue {
   ValueState st = ValueState::Unavailable;
   int16_t used = -1;  // 0-100 when available
   int64_t age = -1;
+  /** Optional name of the thread this context belongs to (P-037); empty when not sent. */
+  char title[kMaxTitleBytes + 1] = {0};
 };
 
 struct StateMessage {
@@ -62,7 +66,10 @@ struct HostMessage {
  */
 ParseError parseHostLine(const char* line, size_t length, HostMessage& out);
 
-/** Device lines, each ending in "\n". Return the length, or 0 if `capacity` is too small. */
+/**
+ * Device lines, each ending in "\n". Return the length, or 0 if `capacity` is too small.
+ * The hello announces the "title" capability (P-037).
+ */
 size_t buildHello(char* out, size_t capacity, const char* nonce, const char* firmware, const char* deviceId);
 size_t buildAlive(char* out, size_t capacity, int64_t seq, uint32_t uptimeSeconds);
 size_t buildError(char* out, size_t capacity, ParseError error);

@@ -29,4 +29,13 @@ void formatDuration(int64_t seconds, char* out, size_t capacity) {
   else snprintf(out, capacity, "%lldd %lldh", s / 86400, (s % 86400) / 3600);
 }
 
+void formatMeasuredAgo(int64_t seconds, char* out, size_t capacity) {
+  if (capacity == 0) return;
+  out[0] = '\0';
+  if (seconds < 0) return;
+  char duration[16];
+  formatDuration(seconds, duration, sizeof(duration));
+  snprintf(out, capacity, "measured %s ago", duration);
+}
+
 }  // namespace tb
