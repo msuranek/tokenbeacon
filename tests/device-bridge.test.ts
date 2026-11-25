@@ -4,6 +4,7 @@ import {
   BUSY_BACKOFF_MS,
   DeviceBridge,
   DEVICE_SILENCE_MS,
+  HANDSHAKE_RETRY_MS,
   HANDSHAKE_TIMEOUT_MS,
   TICK_MS,
   type BridgeClock,
@@ -279,6 +280,110 @@ describe("device bridge", () => {
       assert.ok(parseHostLine(line).ok, line);
       assert.ok(line.endsWith("\n"));
     }
+  });
+});
+
+describe("device bridge: recovering a known display (UX-7)", () => {
+  /** Unplug, then let the bridge open the port again (no answer yet). */
+  async function reopen(context: Awaited<ReturnType<typeof connected>>) {
+    const before = context.transport.connections.length;
+    context.transport.last.unplug();
+    await context.advance(1_000);
+    assert.equal(context.transport.connections.length, before + 1, "a new connection was opened");
+  }
+
+  test("a known display that misses the handshake is retried with a growing delay, never ignored", async () => {
+    const context = await connected();
+    const { bridge, transport, advance, logs, clock } = context;
+    /** Ticks until the bridge opens the port again; returns the time since the last open. */
+    const untilNextOpen = async () => {
+      const opens = transport.opened.length;
+      const from = clock.time;
+      for (let waited = 0; transport.opened.length === opens; waited += TICK_MS) {
+        assert.ok(waited < 120_000, "the bridge must retry");
+        await advance(TICK_MS);
+      }
+      return clock.time - from;
+    };
+    await reopen(context);
+    const gaps: number[] = [];
+    for (let attempt = 0; attempt < HANDSHAKE_RETRY_MS.length + 1; attempt += 1) {
+      assert.equal(bridge.getStatus().state, "handshake");
+      gaps.push(await untilNextOpen()); // silent: e.g. it has not noticed the port open again
+      assert.equal(transport.connections.at(-2)!.closed, true, "the silent connection is closed");
+    }
+    // Each gap = handshake timeout + retry delay (within one tick); the delay grows and stays at the last step.
+    const expected = [...HANDSHAKE_RETRY_MS, HANDSHAKE_RETRY_MS.at(-1)!].map((delay) => delay + HANDSHAKE_TIMEOUT_MS);
+    gaps.forEach((gap, index) => assert.ok(Math.abs(gap - expected[index]) <= 2 * TICK_MS, `gap ${index}: ${gap} vs ${expected[index]}`));
+    assert.deepEqual(bridge.getStatus(), { state: "handshake", detail: null });
+    transport.last.answerHello(); // back
+    await advance(TICK_MS);
+    assert.equal(bridge.getStatus().state, "connected");
+    assert.equal(logs.filter((line) => line.includes("retrying")).length, 1, "the retry is logged once per outage");
+    assert.ok(logs.includes("USB display reconnected."));
+    // After a success the delay starts from the beginning again.
+    await reopen(context);
+    const gap = await untilNextOpen();
+    assert.ok(Math.abs(gap - (HANDSHAKE_RETRY_MS[0] + HANDSHAKE_TIMEOUT_MS)) <= 2 * TICK_MS, `after success: ${gap}`);
+    bridge.stop();
+  });
+
+  test("a port that never answered stays ignored; a known one that answers wrongly is still rejected", async () => {
+    const fresh = setup();
+    await fresh.bridge.start();
+    await fresh.advance(HANDSHAKE_TIMEOUT_MS + TICK_MS);
+    assert.deepEqual(fresh.bridge.getStatus(), { state: "unrecognized", detail: "no_handshake" });
+    await fresh.advance(60_000);
+    assert.equal(fresh.transport.opened.length, 1, "never retried");
+
+    for (const answer of [{ dev: "other-board" }, { nonce: "00000000" }, { proto: [2] }]) {
+      const context = await connected();
+      await reopen(context);
+      context.transport.last.answerHello(answer);
+      assert.equal(context.bridge.getStatus().state, "unrecognized", JSON.stringify(answer));
+      await context.advance(120_000);
+      assert.equal(context.transport.opened.length, 2, `${JSON.stringify(answer)}: never retried`);
+    }
+  });
+
+  test("the disconnect reason is logged as a stable code, without device data", async () => {
+    const reasons: string[] = [];
+    {
+      const context = await connected();
+      context.transport.last.unplug();
+      reasons.push(...context.logs);
+    }
+    {
+      const context = await connected();
+      await context.advance(DEVICE_SILENCE_MS + TICK_MS);
+      reasons.push(...context.logs);
+    }
+    {
+      const context = await connected();
+      context.transport.last.failWrites = true;
+      context.setSnapshot(snapshotWith(10));
+      await context.advance(1_000);
+      reasons.push(...context.logs);
+    }
+    const disconnects = reasons.filter((line) => line.startsWith("USB display disconnected"));
+    assert.deepEqual(disconnects, [
+      "USB display disconnected (disconnected); waiting for it to come back.",
+      "USB display disconnected (device_silent); waiting for it to come back.",
+      "USB display disconnected (write_failed); waiting for it to come back.",
+    ]);
+    for (const line of reasons) assert.ok(!/port-a|AAAA1111|c3a9f01b|5f1c9a2e/.test(line), line);
+  });
+
+  test("an older firmware without capabilities recovers the same way", async () => {
+    const context = await connected(); // answerHello() without caps = firmware 0.1.0
+    await reopen(context);
+    await context.advance(HANDSHAKE_TIMEOUT_MS + TICK_MS + HANDSHAKE_RETRY_MS[0]);
+    context.transport.last.answerHello();
+    await context.advance(TICK_MS + 1_000);
+    assert.equal(context.bridge.getStatus().state, "connected");
+    const states = context.transport.last.messages().filter((message) => message.t === "state");
+    assert.ok(states.length > 0 && !("title" in states.at(-1)!.ctx));
+    context.bridge.stop();
   });
 });
 

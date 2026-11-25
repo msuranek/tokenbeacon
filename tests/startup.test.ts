@@ -212,7 +212,10 @@ describe("optional USB display", () => {
         port: 0,
         distRoot: path.join(fixture.root, "no-dist"),
         service,
-        env: { TOKENBEACON_DEVICE: "auto" },
+        // A serial number no display has: discovery runs with the real system
+        // tools, but a board that happens to be plugged in is never opened, so
+        // the test cannot disturb a running TokenBeacon that is using it.
+        env: { TOKENBEACON_DEVICE: "auto", TOKENBEACON_DEVICE_SERIAL: "TBTEST0NOSUCHDISPLAY" },
         ...quiet,
       });
       t.after(() => monitor.stop());

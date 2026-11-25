@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { close as closeFd, constants, existsSync, open as openFd } from "node:fs";
+import { close as closeFd, closeSync, constants, existsSync, open as openFd } from "node:fs";
 import tty from "node:tty";
 import type { DeviceConfig } from "./config.ts";
 import { LineAssembler } from "./lines.ts";
@@ -93,8 +93,34 @@ export async function openTty(port: string): Promise<DeviceConnection> {
     closeFd(fd, () => undefined);
     throw new TransportError("open_failed");
   }
-  const stream = new tty.ReadStream(fd);
+  let stream: tty.ReadStream;
+  try {
+    stream = new tty.ReadStream(fd);
+  } catch {
+    closeFd(fd, () => undefined);
+    throw new TransportError("open_failed");
+  }
+  // libuv reopens a tty by its name and dup2()s the new descriptor over `fd`,
+  // then reads and writes through the new one and closes only that one. Our
+  // `fd` stays open as a duplicate: left alone, every connection would leak a
+  // descriptor and keep the port open, so the display never sees the port
+  // close and open again. The stream does not use it, so close it now
+  // (synchronously: it is not the last reference, so this never waits).
+  const streamFd = handleFd(stream);
+  if (streamFd !== null && streamFd !== fd) {
+    try {
+      closeSync(fd);
+    } catch {
+      // Already gone; nothing is left open either way.
+    }
+  }
   return new StreamConnection(stream);
+}
+
+/** The descriptor the stream's libuv handle reads and writes, if Node exposes it. */
+function handleFd(stream: tty.ReadStream): number | null {
+  const fd = (stream as unknown as { _handle?: { fd?: unknown } })._handle?.fd;
+  return typeof fd === "number" && Number.isInteger(fd) && fd >= 0 ? fd : null;
 }
 
 class StreamConnection implements DeviceConnection {
@@ -139,6 +165,9 @@ class StreamConnection implements DeviceConnection {
   private finish(): void {
     if (this.closed) return;
     this.closed = true;
+    // End of input or an error does not always close the handle: make sure the
+    // descriptor is released on every path, not only on close().
+    this.stream.destroy();
     for (const listener of this.closeListeners) listener();
   }
 }

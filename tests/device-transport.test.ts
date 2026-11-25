@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { writeFileSync } from "node:fs";
+import { fstatSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, test } from "node:test";
 import { DeviceBridge } from "../src/device/bridge.ts";
 import { openTty, parseIoregDisplays } from "../src/device/transport-macos.ts";
 import { HELPER_SCRIPT, parseHelperPorts, powershellPath, WindowsTransport } from "../src/device/transport-windows.ts";
-import { TransportError, type DeviceTransport } from "../src/device/transport.ts";
+import { TransportError, type DeviceConnection, type DeviceTransport } from "../src/device/transport.ts";
 import type { MonitorSnapshot } from "../src/types.ts";
 import { createTempRoot } from "./helpers/fixture-codex-home.ts";
 
@@ -169,6 +169,93 @@ function snapshot(): MonitorSnapshot {
 
 const hasPython = spawnSync("python3", ["--version"]).status === 0;
 
+/** Descriptors of this process that refer to the given tty device number. */
+function descriptorsOn(device: number): number {
+  let count = 0;
+  for (let fd = 0; fd < 1024; fd += 1) {
+    try {
+      const stat = fstatSync(fd);
+      if (stat.isCharacterDevice() && stat.rdev === device) count += 1;
+    } catch {
+      // not open
+    }
+  }
+  return count;
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
+
+/** libuv closes descriptors asynchronously: wait up to 3 s for the condition. */
+async function eventually(condition: () => boolean, what: string) {
+  for (let attempt = 0; attempt < 30 && !condition(); attempt += 1) await settle();
+  assert.ok(condition(), what);
+}
+
+/**
+ * A fake display on a pseudo-terminal (synthetic data only). It answers each
+ * host hello like the firmware, counts them, and closes its side on "hangup".
+ */
+async function startFakeDisplay(t: { after: (fn: () => void) => void }, options: { answer: boolean }) {
+  const { root, cleanup } = createTempRoot();
+  t.after(cleanup);
+  const script = path.join(root, "fake_display.py");
+  writeFileSync(
+    script,
+    [
+      "import os, pty, json, select, sys, time",
+      "master, slave = pty.openpty()",
+      "os.set_blocking(master, False)",
+      "name = os.ttyname(slave)",
+      "os.close(slave)",
+      "print('tty ' + name, flush=True)",
+      "buf = b''",
+      "hellos = 0",
+      "while True:",
+      "    r, _, _ = select.select([master, sys.stdin], [], [], 30)",
+      "    if not r: break",
+      "    if sys.stdin in r:",
+      "        if sys.stdin.readline().strip() == 'hangup':",
+      "            os.close(master)",
+      "            print('hung up', flush=True)",
+      "            sys.stdin.readline()",
+      "        break",
+      "    try:",
+      "        data = os.read(master, 4096)",
+      "    except OSError:",
+      "        data = b''",
+      "    if not data:",
+      "        time.sleep(0.05)  # no host has the port open",
+      "        continue",
+      "    buf += data",
+      "    while b'\\n' in buf:",
+      "        line, buf = buf.split(b'\\n', 1)",
+      "        msg = json.loads(line)",
+      "        if msg['t'] == 'hello':",
+      "            hellos += 1",
+      "            print('hellos %d' % hellos, flush=True)",
+      `            if ${options.answer ? "True" : "False"}:`,
+      "                os.write(master, (json.dumps({'tb':1,'t':'hello','dev':'tokenbeacon-display','fw':'0.1.0','proto':[1],'nonce':msg['nonce'],'id':'abcd1234'}) + '\\r\\n').encode())",
+      "        elif msg['t'] == 'state':",
+      "            os.write(master, (json.dumps({'tb':1,'t':'alive','seq':msg['seq'],'up':1}) + '\\r\\n').encode())",
+    ].join("\n"),
+  );
+  const child = spawn("python3", [script], { stdio: ["pipe", "pipe", "ignore"] });
+  t.after(() => child.kill());
+  let hellos = 0;
+  const events: string[] = [];
+  const ttyPath = await new Promise<string>((resolve) => {
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      for (const line of chunk.split("\n").filter(Boolean)) {
+        if (line.startsWith("tty ")) resolve(line.slice(4).trim());
+        if (line.startsWith("hellos ")) hellos = Number(line.slice(7));
+        events.push(line.trim());
+      }
+    });
+  });
+  return { tty: ttyPath, device: statSync(ttyPath).rdev, hellos: () => hellos, hangUp: () => child.stdin.write("hangup\n"), events };
+}
+
 describe("device transports: real I/O", () => {
   test(
     "macOS: the bridge talks to a fake display on a pseudo-terminal",
@@ -225,6 +312,70 @@ describe("device transports: real I/O", () => {
       }
       assert.equal(bridge.getStatus().state, "connected");
       assert.ok(output.includes("state 58"), output.join(" | "));
+    },
+  );
+
+  test(
+    "macOS: opening and closing a port many times leaves no descriptor open, on every path",
+    { skip: (process.platform !== "darwin" && "macOS only") || (!hasPython && "python3 not available") },
+    async (t) => {
+      const fake = await startFakeDisplay(t, { answer: true });
+      const before = descriptorsOn(fake.device);
+      assert.equal(before, 0);
+      for (let round = 0; round < 20; round += 1) {
+        const connection = await openTty(fake.tty);
+        assert.equal(descriptorsOn(fake.device), 1, `round ${round}: one descriptor while open`);
+        connection.close();
+        connection.close(); // closing twice is harmless
+        await eventually(() => descriptorsOn(fake.device) === 0, `round ${round}: none after close`);
+      }
+      // A port that does not exist is refused without leaving anything behind.
+      await assert.rejects(openTty(`${fake.tty}-missing`), (error: unknown) => error instanceof TransportError && error.code === "not_found");
+      // The other side going away (as when the cable is pulled) also releases the descriptor.
+      const connection = await openTty(fake.tty);
+      let closed = false;
+      connection.onClose(() => (closed = true));
+      fake.hangUp();
+      await eventually(() => closed, `the connection reports the hang-up: ${fake.events.join(" | ")}`);
+      await eventually(() => descriptorsOn(fake.device) === 0, "none after a hang-up");
+      await assert.rejects(connection.write("x\n"));
+    },
+  );
+
+  test(
+    "macOS: the bridge reconnects to the same display again and again without a restart",
+    { skip: (process.platform !== "darwin" && "macOS only") || (!hasPython && "python3 not available") },
+    async (t) => {
+      const fake = await startFakeDisplay(t, { answer: true });
+      let current: DeviceConnection | null = null;
+      const transport: DeviceTransport = {
+        discover: async () => [{ id: fake.tty, port: fake.tty, serial: null }],
+        open: async (candidate) => (current = await openTty(candidate.port)),
+        dispose: () => undefined,
+      };
+      const logs: string[] = [];
+      const bridge = new DeviceBridge({
+        config: { mode: "auto", serial: null },
+        transport,
+        getSnapshot: snapshot,
+        hostVersion: "0.3.0",
+        log: (line) => logs.push(line),
+      });
+      await bridge.start();
+      t.after(() => bridge.stop());
+      const until = async (condition: () => boolean, what: string) => {
+        for (let attempt = 0; attempt < 60 && !condition(); attempt += 1) await settle();
+        assert.ok(condition(), `${what}: ${JSON.stringify(bridge.getStatus())} ${logs.join(" | ")}`);
+      };
+      await until(() => bridge.getStatus().state === "connected", "first connection");
+      for (let round = 1; round <= 3; round += 1) {
+        current!.close(); // as if the port closed under the bridge
+        await until(() => bridge.getStatus().state !== "connected", `round ${round}: dropped`);
+        await until(() => bridge.getStatus().state === "connected", `round ${round}: connected again`);
+        await eventually(() => descriptorsOn(fake.device) === 1, `round ${round}: exactly one descriptor`);
+      }
+      assert.equal(fake.hellos(), 4);
+      assert.equal(logs.filter((line) => line === "USB display reconnected.").length, 3);
     },
   );
 

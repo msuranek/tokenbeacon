@@ -165,11 +165,18 @@ Off unless `TOKENBEACON_DEVICE` is set:
 - **Handshake:** after opening the port the host sends `hello`; a port that
   does not answer with a matching `hello` within 2 seconds, or answers as
   another device, is closed and not tried again until TokenBeacon restarts.
+  Exception: a display that already completed a handshake in this run and
+  only stays silent (no answer at all) is tried again after 5, 15, 30 and
+  then every 60 seconds. A wrong identity, nonce or protocol version is never
+  retried.
 - **Sending:** a `state` message right after the handshake, then when the
   displayed values change and at least every 10 seconds; never more than one
   per second.
 - **Watchdog:** no `alive` or `err` line from the device for 30 seconds
   closes the port; unplugging is detected and the display is found again.
+  Closing releases the port completely, so the display sees it open again.
+  The log names the reason as a code (`disconnected`, `device_silent`,
+  `write_failed`), never port names or data.
 - **Busy port** (another program, such as a serial monitor, holds it): retried
   after 15, 30 and then every 60 seconds; other programs are never stopped.
 - **Port settings:** DTR on, RTS off, never 1200 baud, so the board neither

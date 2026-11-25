@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so an idle thread could jump to the top of its project and be shown on an
   external display instead of the thread actually being worked on. Last
   activity now comes only from work Codex recorded in the thread.
+- On macOS the USB display could stop updating for good after a short
+  interruption: every connection left the serial port open in the
+  background, and a display that did not answer the next handshake in time
+  was ignored until TokenBeacon restarted. The port is now released on every
+  close, a display that was already connected is retried, and the log names
+  why it disconnected.
 
 ## 0.2.0 - 2026-11-18
 

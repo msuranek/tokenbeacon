@@ -46,6 +46,12 @@ export const HANDSHAKE_TIMEOUT_MS = 2_000;
 export const MIN_SEND_INTERVAL_MS = 1_000;
 export const DEVICE_SILENCE_MS = 30_000;
 export const BUSY_BACKOFF_MS = [15_000, 30_000, 60_000] as const;
+/**
+ * A display that already completed a handshake in this run and then stays
+ * silent during a new one (still booting, or it has not noticed the port open
+ * again) is tried again after these delays instead of being ignored.
+ */
+export const HANDSHAKE_RETRY_MS = [5_000, 15_000, 30_000, 60_000] as const;
 
 const systemClock: BridgeClock = {
   now: () => Date.now(),
@@ -75,6 +81,9 @@ export class DeviceBridge {
   private nextDiscoveryAt = 0;
   private busyAttempts = 0;
   private readonly rejected = new Set<string>();
+  /** Ports that answered as a TokenBeacon display in this run. */
+  private readonly verified = new Set<string>();
+  private handshakeRetries = 0;
   private seq = 0;
   private lastSentAt = Number.NEGATIVE_INFINITY;
   private lastSentKey: string | null = null;
@@ -117,7 +126,7 @@ export class DeviceBridge {
       if (!this.connection) {
         if (now >= this.nextDiscoveryAt) await this.discoverAndOpen(now);
       } else if (this.status.state === "handshake") {
-        if (now > this.handshakeDeadline) this.reject("no_handshake");
+        if (now > this.handshakeDeadline) this.handshakeTimedOut(now);
       } else if (this.status.state === "connected") {
         if (now - this.lastHeardAt > DEVICE_SILENCE_MS) {
           this.drop("device_silent", now + MIN_SEND_INTERVAL_MS);
@@ -204,6 +213,8 @@ export class DeviceBridge {
       this.lastSentAt = Number.NEGATIVE_INFINITY;
       this.lastSentKey = null;
       this.deviceCaps = new Set(message.caps);
+      if (this.candidate) this.verified.add(this.candidate.id);
+      this.handshakeRetries = 0;
       this.setStatus("connected", null);
       this.log(this.connectedOnce ? "USB display reconnected." : "USB display connected.");
       this.connectedOnce = true;
@@ -237,10 +248,26 @@ export class DeviceBridge {
     }
   }
 
+  /**
+   * No answer to the hello in time. A port that never answered is ignored for
+   * the rest of the run; a display that already answered in this run is only
+   * retried later. A wrong identity, nonce or protocol is still a verdict
+   * (reject), so retrying never makes the bridge accept another device.
+   */
+  private handshakeTimedOut(now: number): void {
+    if (!this.candidate || !this.verified.has(this.candidate.id)) return this.reject("no_handshake");
+    const wait = HANDSHAKE_RETRY_MS[Math.min(this.handshakeRetries, HANDSHAKE_RETRY_MS.length - 1)];
+    if (this.handshakeRetries === 0) this.log("USB display: no answer to the handshake (no_handshake); retrying.");
+    this.handshakeRetries += 1;
+    this.closeConnection();
+    this.nextDiscoveryAt = now + wait;
+    this.setStatus("searching", "no_handshake");
+  }
+
   /** The port answered, but not as a TokenBeacon display: never try it again in this run. */
   private reject(code: string): void {
     if (this.candidate) this.rejected.add(this.candidate.id);
-    this.log("USB display: a port did not answer as a TokenBeacon display and is ignored.");
+    this.log(`USB display: a port did not answer as a TokenBeacon display (${code}) and is ignored.`);
     this.closeConnection();
     this.nextDiscoveryAt = this.clock.now() + DISCOVERY_INTERVAL_MS;
     this.setStatus("unrecognized", code);
@@ -250,7 +277,8 @@ export class DeviceBridge {
     const wasConnected = this.status.state === "connected";
     this.closeConnection();
     this.nextDiscoveryAt = retryAt;
-    if (wasConnected) this.log("USB display disconnected; waiting for it to come back.");
+    // Only the stable code is logged, never port names or device data.
+    if (wasConnected) this.log(`USB display disconnected (${code}); waiting for it to come back.`);
     this.setStatus("searching", code);
   }
 
