@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { MonitorSnapshot } from "../types.ts";
 import type { DeviceConfig } from "./config.ts";
-import { buildHello, buildStateMessage, HEARTBEAT_SECONDS, nextSeq, parseDeviceLine, PROTOCOL_VERSION, serializeMessage } from "./protocol.ts";
+import { buildHello, buildStateMessage, HEARTBEAT_SECONDS, nextSeq, parseDeviceLine, PROTOCOL_VERSION, serializeMessage, TITLE_CAPABILITY } from "./protocol.ts";
 import { TransportError, type DeviceCandidate, type DeviceConnection, type DeviceTransport } from "./transport.ts";
 
 /**
@@ -31,6 +31,11 @@ export interface BridgeOptions {
   getSnapshot: () => MonitorSnapshot | null;
   hostVersion: string;
   log?: (message: string) => void;
+  /**
+   * Send the name of the thread the context belongs to (TOKENBEACON_DEVICE_TITLE=on),
+   * and only to a device that announced the "title" capability in this connection.
+   */
+  sendTitle?: boolean;
   clock?: BridgeClock;
   nonce?: () => string;
 }
@@ -64,6 +69,8 @@ export class DeviceBridge {
   private connection: DeviceConnection | null = null;
   private candidate: DeviceCandidate | null = null;
   private nonce: string | null = null;
+  /** Capabilities from the device hello of the current connection only. */
+  private deviceCaps = new Set<string>();
   private handshakeDeadline = 0;
   private nextDiscoveryAt = 0;
   private busyAttempts = 0;
@@ -196,6 +203,7 @@ export class DeviceBridge {
       this.lastHeardAt = now;
       this.lastSentAt = Number.NEGATIVE_INFINITY;
       this.lastSentKey = null;
+      this.deviceCaps = new Set(message.caps);
       this.setStatus("connected", null);
       this.log(this.connectedOnce ? "USB display reconnected." : "USB display connected.");
       this.connectedOnce = true;
@@ -207,7 +215,9 @@ export class DeviceBridge {
   private async sendState(now: number): Promise<void> {
     const snapshot = this.options.getSnapshot();
     if (!snapshot || now - this.lastSentAt < MIN_SEND_INTERVAL_MS) return;
-    const message = buildStateMessage(snapshot, this.seq, now);
+    const message = buildStateMessage(snapshot, this.seq, now, {
+      title: this.options.sendTitle === true && this.deviceCaps.has(TITLE_CAPABILITY),
+    });
     // Ages and countdowns change every second; the device advances them itself.
     const key = JSON.stringify(message, (name, value) => (name === "seq" || name === "age" || name === "reset" ? undefined : value));
     if (key === this.lastSentKey && now - this.lastSentAt < HEARTBEAT_SECONDS * 1_000) return;
@@ -249,6 +259,7 @@ export class DeviceBridge {
     this.connection = null;
     this.candidate = null;
     this.nonce = null;
+    this.deviceCaps = new Set();
     try {
       connection?.close();
     } catch {

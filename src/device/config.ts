@@ -41,6 +41,17 @@ export function readDeviceConfig(
   return { config: { mode: "port", port: platform === "win32" ? raw.toUpperCase() : raw }, problem: null };
 }
 
+/**
+ * TOKENBEACON_DEVICE_TITLE=on sends the name of the thread whose context is
+ * shown to displays that support it (P-037). Off by default.
+ */
+export function readDeviceTitleSetting(env: NodeJS.ProcessEnv = process.env): { enabled: boolean; problem: "invalid_device_title" | null } {
+  const raw = (env.TOKENBEACON_DEVICE_TITLE ?? "").trim().toLowerCase();
+  if (raw === "" || raw === "off" || raw === "0" || raw === "false" || raw === "no") return { enabled: false, problem: null };
+  if (raw === "on" || raw === "1" || raw === "true" || raw === "yes") return { enabled: true, problem: null };
+  return { enabled: false, problem: "invalid_device_title" };
+}
+
 export function devicePlatform(platform: NodeJS.Platform = process.platform): PathPlatform {
   return platform === "win32" ? "win32" : "posix";
 }

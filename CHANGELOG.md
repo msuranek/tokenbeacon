@@ -16,7 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   protocol.
 - Preview: display firmware for the LILYGO T-Display-S3 in `firmware/`
   (PlatformIO). It builds and its protocol logic is tested against the same
-  vectors as TokenBeacon; it has not been verified on a real board yet.
+  vectors as TokenBeacon. Verified on a real board with macOS; Windows is
+  not verified yet.
+- Preview: with `TOKENBEACON_DEVICE_TITLE=on` (off by default) the USB display
+  also shows the name of the most recent thread, the one whose context it
+  shows. Only displays that ask for it in the handshake receive it.
 
 ### Fixed
 

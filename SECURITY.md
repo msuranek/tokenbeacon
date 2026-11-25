@@ -72,7 +72,11 @@ Out of scope:
   a TokenBeacon display (Espressif USB vendor ID and the product name
   “TokenBeacon Display”) or the user named it, and keeps it only after a
   handshake with a random nonce. It sends only limit and context percentages
-  with their freshness – no names, IDs, paths or token counts – and treats
+  with their freshness – no project names, IDs, paths or token counts – and,
+  only with `TOKENBEACON_DEVICE_TITLE=on` (off by default) and only to a display
+  that asks for it in the handshake, the name of the thread whose context is
+  shown (at most 200 bytes, as on the dashboard; the display keeps it in memory
+  only while the data is fresh). It treats
   everything the device sends as untrusted, bounded input. To find the port it
   runs fixed system tools without a shell: `ioreg` and `stty` on macOS, the
   built-in Windows PowerShell with a fixed script on Windows. The device never

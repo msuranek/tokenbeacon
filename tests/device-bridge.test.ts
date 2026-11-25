@@ -8,7 +8,7 @@ import {
   TICK_MS,
   type BridgeClock,
 } from "../src/device/bridge.ts";
-import { readDeviceConfig } from "../src/device/config.ts";
+import { readDeviceConfig, readDeviceTitleSetting } from "../src/device/config.ts";
 import { LineAssembler } from "../src/device/lines.ts";
 import { parseHostLine } from "../src/device/protocol.ts";
 import { TransportError, type DeviceCandidate, type DeviceConnection, type DeviceTransport } from "../src/device/transport.ts";
@@ -60,11 +60,11 @@ class FakeConnection implements DeviceConnection {
     });
   }
   /** Answer the host hello like the firmware does. */
-  answerHello(options: { dev?: string; nonce?: string; proto?: number[] } = {}) {
+  answerHello(options: { dev?: string; nonce?: string; proto?: number[]; caps?: string[] } = {}) {
     const hello = this.messages().find((message) => message.t === "hello");
     assert.ok(hello && hello.t === "hello");
     this.emit(
-      `${JSON.stringify({ tb: 1, t: "hello", dev: options.dev ?? "tokenbeacon-display", fw: "0.1.0", proto: options.proto ?? [1], nonce: options.nonce ?? hello.nonce, id: "c3a9f01b" })}\r\n`,
+      `${JSON.stringify({ tb: 1, t: "hello", dev: options.dev ?? "tokenbeacon-display", fw: "0.1.0", proto: options.proto ?? [1], ...(options.caps ? { caps: options.caps } : {}), nonce: options.nonce ?? hello.nonce, id: "c3a9f01b" })}\r\n`,
     );
   }
 }
@@ -105,7 +105,7 @@ function snapshotWith(fiveUsed: number | null): MonitorSnapshot {
   return { limits: { fiveHour: limit(fiveUsed), weekly: limit(null) }, projects: [], unassignedThreads: [] } as unknown as MonitorSnapshot;
 }
 
-function setup(options: { snapshot?: MonitorSnapshot | null; serial?: string | null } = {}) {
+function setup(options: { snapshot?: MonitorSnapshot | null; serial?: string | null; sendTitle?: boolean } = {}) {
   const clock = new FakeClock();
   const transport = new FakeTransport();
   const logs: string[] = [];
@@ -116,6 +116,7 @@ function setup(options: { snapshot?: MonitorSnapshot | null; serial?: string | n
     getSnapshot: () => snapshot,
     hostVersion: "0.3.0",
     log: (line) => logs.push(line),
+    sendTitle: options.sendTitle,
     clock,
     nonce: () => "5f1c9a2e",
   });
@@ -282,6 +283,13 @@ describe("device bridge", () => {
 });
 
 describe("device settings", () => {
+  test("thread titles for the display are off unless TOKENBEACON_DEVICE_TITLE=on", () => {
+    assert.deepEqual(readDeviceTitleSetting({}), { enabled: false, problem: null });
+    for (const value of ["on", "ON", "1", "true", "yes"]) assert.deepEqual(readDeviceTitleSetting({ TOKENBEACON_DEVICE_TITLE: value }), { enabled: true, problem: null });
+    for (const value of ["off", "0", "false", "no", " "]) assert.equal(readDeviceTitleSetting({ TOKENBEACON_DEVICE_TITLE: value }).enabled, false);
+    assert.deepEqual(readDeviceTitleSetting({ TOKENBEACON_DEVICE_TITLE: "maybe" }), { enabled: false, problem: "invalid_device_title" });
+  });
+
   test("off unless TOKENBEACON_DEVICE is set; ports are validated per system", () => {
     assert.deepEqual(readDeviceConfig({}, "darwin"), { config: { mode: "off" }, problem: null });
     assert.deepEqual(readDeviceConfig({ TOKENBEACON_DEVICE: "off" }, "win32"), { config: { mode: "off" }, problem: null });
@@ -321,5 +329,84 @@ describe("line assembler", () => {
     assembler.push(Buffer.from("y".repeat(100) + "\n{\"c\":3}\n"));
     assert.deepEqual(lines, ['{"a":"ž"}\r\n', '{"b":2}\n', '{"c":3}\n']);
     assert.equal(assembler.dropped, 1);
+  });
+});
+
+// --- Thread title (P-037) -------------------------------------------------------
+
+/** Synthetic threads only. The newest by activity is the one the display shows. */
+function snapshotWithThreads(threads: Array<{ title: string; used: number | null; at: string }>): MonitorSnapshot {
+  return {
+    limits: { fiveHour: { value: null, state: "unavailable", observedAt: null, source: null }, weekly: { value: null, state: "unavailable", observedAt: null, source: null } },
+    projects: [],
+    unassignedThreads: threads.map((thread) => ({
+      title: thread.title,
+      contextUsedPercent:
+        thread.used === null
+          ? { value: null, state: "unavailable", observedAt: null, source: null }
+          : { value: thread.used, state: "current", observedAt: thread.at, source: "jsonl" },
+      lastActivityAt: { value: thread.at, state: "current", observedAt: null, source: null },
+    })),
+  } as unknown as MonitorSnapshot;
+}
+
+describe("device bridge: thread title (P-037)", () => {
+  const threads = [
+    { title: "Starší vlákno", used: 80, at: "2026-11-19T10:00:00Z" },
+    { title: "Najít příčinu chybějících zástupů", used: 17, at: "2026-11-19T11:59:00Z" },
+  ];
+
+  async function connect(options: { sendTitle?: boolean; caps?: string[] }) {
+    const context = setup({ snapshot: snapshotWithThreads(threads), sendTitle: options.sendTitle });
+    await context.bridge.start();
+    context.transport.last.answerHello({ caps: options.caps });
+    await context.advance(TICK_MS);
+    const states = () => context.transport.last.messages().filter((message) => message.t === "state");
+    return { ...context, states };
+  }
+
+  test("sent only when turned on and the device announced the capability", async () => {
+    for (const [sendTitle, caps, expected] of [
+      [false, undefined, undefined],
+      [false, ["title"], undefined],
+      [true, undefined, undefined],
+      [true, ["later_feature"], undefined],
+      [true, ["title"], "Najít příčinu chybějících zástupů"],
+    ] as const) {
+      const { states, bridge } = await connect({ sendTitle, caps: caps ? [...caps] : undefined });
+      const ctx = states().at(-1)!.ctx;
+      assert.equal("title" in ctx ? ctx.title : undefined, expected, `sendTitle=${sendTitle} caps=${caps}`);
+      bridge.stop();
+    }
+  });
+
+  test("the title and the context always come from the same thread, and follow it when it changes", async () => {
+    const context = await connect({ sendTitle: true, caps: ["title"] });
+    let ctx = context.states().at(-1)!.ctx;
+    assert.deepEqual(ctx.st !== "unavailable" && { used: ctx.used, title: ctx.title }, { used: 17, title: "Najít příčinu chybějících zástupů" });
+    // Work moves to another thread: both values switch together, at once.
+    context.setSnapshot(snapshotWithThreads([...threads, { title: "Nové vlákno – ESP32 UX", used: 42, at: "2026-11-19T12:00:30Z" }]));
+    await context.advance(1_000);
+    ctx = context.states().at(-1)!.ctx;
+    assert.deepEqual(ctx.st !== "unavailable" && { used: ctx.used, title: ctx.title }, { used: 42, title: "Nové vlákno – ESP32 UX" });
+    // A newest thread without a context value: no title either (never another thread's name).
+    context.setSnapshot(snapshotWithThreads([...threads, { title: "Bez kontextu", used: null, at: "2026-11-19T12:01:00Z" }]));
+    await context.advance(1_000);
+    assert.deepEqual(context.states().at(-1)!.ctx, { st: "unavailable" });
+    context.bridge.stop();
+  });
+
+  test("a reconnect negotiates again; the title is never logged", async () => {
+    const context = await connect({ sendTitle: true, caps: ["title"] });
+    const first = context.transport.last;
+    first.unplug();
+    await context.advance(1_000);
+    assert.notEqual(context.transport.last, first, "a new connection");
+    context.transport.last.answerHello(); // an older firmware answers this time
+    await context.advance(TICK_MS + 1_000);
+    const ctx = context.transport.last.messages().filter((message) => message.t === "state").at(-1)!.ctx;
+    assert.ok(!("title" in ctx), "no title after reconnecting to a device without the capability");
+    assert.ok(context.logs.every((line) => !line.includes("zástup") && !line.includes("vlákno")));
+    context.bridge.stop();
   });
 });
