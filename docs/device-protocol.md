@@ -179,8 +179,11 @@ Off unless `TOKENBEACON_DEVICE` is set:
   `write_failed`), never port names or data.
 - **Busy port** (another program, such as a serial monitor, holds it): retried
   after 15, 30 and then every 60 seconds; other programs are never stopped.
-- **Port settings:** DTR on, RTS off, never 1200 baud, so the board neither
-  resets nor enters its bootloader.
+- **Port settings:** never 1200 baud, so the board neither resets nor enters
+  its bootloader. The display counts the host as connected only while DTR and
+  RTS are both on. On Windows the port is opened with DTR on and RTS off, and
+  RTS is raised right after opening: this order always ends "connected" and
+  never forms the bootloader sequence (RTS only, both, DTR only, none).
 - **Status:** `/api/health` gains a `device` entry (`searching`, `handshake`,
   `connected`, `busy`, `unrecognized` and a detail code) only when the display
   is enabled. It never changes the overall status.
@@ -203,3 +206,17 @@ Off unless `TOKENBEACON_DEVICE` is set:
 | `unknown_type` | `t` is not a known message type. |
 | `unknown_device` | Device `hello` with another `dev` value. |
 | `bad_field` | A required field is missing or out of range. |
+
+## Known issues
+
+- **Windows: display stopped once with a black screen (unexplained).** During
+  the first Windows 11 hardware test (LilyGO T-Display S3, firmware 0.2.0),
+  after one open/close of the port with the earlier settings (DTR on, RTS
+  off), the screen went black and opening the port failed with "A device
+  attached to the system is not functioning". Windows still listed the
+  composite TinyUSB device, so the board was not in its bootloader.
+  Unplugging the USB cable for 5 seconds recovered it. It did not happen again
+  in later open/close cycles or with the current settings. The cause is not
+  known; no firmware change has been made for it. If it happens again, note
+  the time, the last `/api/health` device state and what was shown before the
+  screen went black.

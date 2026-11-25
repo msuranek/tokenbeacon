@@ -100,13 +100,31 @@ describe("device transports: discovery parsing", () => {
     assert.deepEqual(parseHelperPorts("not json"), []);
   });
 
-  test("Windows helper: fixed script, absolute PowerShell path, no 1200 baud, no RTS", () => {
+  test("Windows helper: fixed script, absolute PowerShell path, no 1200 baud, RTS only after DTR", () => {
     assert.equal(powershellPath({ SystemRoot: "C:\\Windows" }), "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
     assert.ok(!HELPER_SCRIPT.includes("1200"));
-    assert.match(HELPER_SCRIPT, /RtsEnable = \$false/);
+    // The display counts the host as connected only with DTR and RTS on; RTS
+    // goes on after Open() (DTR already on), never before it and never alone.
+    const dtrOn = HELPER_SCRIPT.indexOf("$candidate.DtrEnable = $true");
+    const rtsOffAtOpen = HELPER_SCRIPT.indexOf("$candidate.RtsEnable = $false");
+    const open = HELPER_SCRIPT.indexOf("$candidate.Open()");
+    const rtsOn = HELPER_SCRIPT.indexOf("$candidate.RtsEnable = $true");
+    assert.ok(dtrOn >= 0 && rtsOffAtOpen >= 0 && open > dtrOn && open > rtsOffAtOpen, "opened with DTR on, RTS off");
+    assert.ok(rtsOn > open, "RTS is raised after the port is open");
+    assert.equal(HELPER_SCRIPT.split("RtsEnable = $true").length - 1, 1);
     assert.match(HELPER_SCRIPT, /'\^COM\[1-9\]\[0-9\]\{0,2\}\$'/);
     assert.ok(!/Invoke-Expression|iex |Start-Process|Remove-Item|Set-ExecutionPolicy|Invoke-WebRequest|Net\.WebClient/i.test(HELPER_SCRIPT));
     assert.ok(Buffer.from(HELPER_SCRIPT, "utf16le").toString("base64").length < 30_000, "fits on the command line");
+  });
+
+  test("Windows helper: product name of a composite device comes from the parent, not the CDC interface", () => {
+    // On Windows the COM port of the TinyUSB firmware is interface MI_00 of a
+    // composite device; its own bus-reported description is "TinyUSB CDC".
+    const parent = HELPER_SCRIPT.indexOf("$deviceId = [string](Get-PnpDeviceProperty -InstanceId $id -KeyName 'DEVPKEY_Device_Parent')");
+    const product = HELPER_SCRIPT.indexOf("Get-PnpDeviceProperty -InstanceId $deviceId -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc'");
+    assert.ok(parent >= 0, "parent device is looked up");
+    assert.ok(product > parent, "product name is read from the parent device");
+    assert.ok(!HELPER_SCRIPT.includes("-InstanceId $id -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc'"));
   });
 });
 

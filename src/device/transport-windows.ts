@@ -40,8 +40,14 @@ export interface WindowsTransportOptions {
  * Helper protocol (one line each, ASCII):
  *   in:  LIST | OPEN COMn | SEND <base64> | CLOSE | EXIT
  *   out: READY | PORTS <json> | OPENED | SENT | CLOSED | ERR <code> | DATA <base64> | LOST
- * The port is opened with DTR on and RTS off and never at 1200 baud, so the
- * display does not reset or enter its bootloader.
+ * The port is opened with DTR on and RTS off, and RTS is raised only after the
+ * port is open, never at 1200 baud. The ESP32-S3 TinyUSB CDC (arduino-esp32
+ * USBCDC) treats the host as connected – and only then sends anything – when
+ * DTR and RTS are both on; its bootloader entry needs the sequence RTS-only,
+ * both, DTR-only, none. DTR first, then RTS always ends "connected" and never
+ * starts that sequence. With RTS already on at Open(), Windows may report the
+ * lines in an order the display does not count as connected (seen on COM9:
+ * the hello was never answered).
  */
 export const HELPER_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -77,12 +83,17 @@ while ($running) {
           if ($device.Name -notmatch '\((COM[0-9]+)\)') { continue }
           $com = $Matches[1]
           $id = [string]$device.PNPDeviceID
-          $product = $null
-          try { $product = [string](Get-PnpDeviceProperty -InstanceId $id -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc').Data } catch { }
-          $serialSource = $id
+          # The USB product name belongs to the device. A COM port of a composite
+          # device (&MI_nn, e.g. TinyUSB CDC) is an interface whose bus-reported
+          # description is the interface name ("TinyUSB CDC"), so the product name
+          # and the serial number are read from the parent device instead.
+          $deviceId = $id
           if ($id -match '&MI_[0-9A-F]{2}') {
-            try { $serialSource = [string](Get-PnpDeviceProperty -InstanceId $id -KeyName 'DEVPKEY_Device_Parent').Data } catch { }
+            try { $deviceId = [string](Get-PnpDeviceProperty -InstanceId $id -KeyName 'DEVPKEY_Device_Parent').Data } catch { }
           }
+          $product = $null
+          try { $product = [string](Get-PnpDeviceProperty -InstanceId $deviceId -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc').Data } catch { }
+          $serialSource = $deviceId
           $serial = ($serialSource -split '\\')[-1]
           $found += New-Object PSObject -Property @{ port = $com; product = $product; serial = $serial }
         }
@@ -97,6 +108,7 @@ while ($running) {
         $candidate.RtsEnable = $false
         $candidate.WriteTimeout = 1000
         $candidate.Open()
+        $candidate.RtsEnable = $true
         $port = $candidate
         Say 'OPENED'
       } catch { Say ('ERR ' + (Code $_)) }
