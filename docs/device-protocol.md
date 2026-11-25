@@ -1,8 +1,8 @@
 # TokenBeacon USB display protocol (`device-state/v1`)
 
-Status: **draft** for the optional USB display (planned for v0.3.0). TokenBeacon
-sends these messages only when `TOKENBEACON_DEVICE` is set; the display
-firmware is not released yet.
+Status: **preview** since v0.3.0. TokenBeacon sends these messages only when
+`TOKENBEACON_DEVICE` is set; the display firmware is in
+[`firmware/`](../firmware/README.md) and is built from source.
 
 TokenBeacon can drive a small display board (reference: LILYGO T-Display-S3)
 over a single USB-C cable. The board is a USB CDC serial device; the protocol

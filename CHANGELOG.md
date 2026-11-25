@@ -5,7 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## 0.3.0 - 2026-11-25
+
+TokenBeacon can now drive an optional USB desk display: a LILYGO
+T-Display-S3 with the firmware in `firmware/` shows your 5-hour and weekly
+limits and the context of the most recent thread. The display is a preview,
+off by default, and verified on real hardware with macOS and Windows 11.
 
 ### Added
 
@@ -15,9 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with their freshness, following the documented `device-state/v1`
   protocol.
 - Preview: display firmware for the LILYGO T-Display-S3 in `firmware/`
-  (PlatformIO). It builds and its protocol logic is tested against the same
-  vectors as TokenBeacon. Verified on a real board with macOS; Windows is
-  not verified yet.
+  (PlatformIO) with four screens – Overview, Limits, Context and Info. The
+  GPIO14 button switches screens (short press) and portrait/landscape (hold);
+  the display remembers the orientation. Its protocol logic is tested against
+  the same vectors as TokenBeacon. Verified on a real board with macOS and
+  Windows 11. It is built and flashed from source with PlatformIO.
 - Preview: with `TOKENBEACON_DEVICE_TITLE=on` (off by default) the USB display
   also shows the name of the most recent thread, the one whose context it
   shows. Only displays that ask for it in the handshake receive it.
