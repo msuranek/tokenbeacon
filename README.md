@@ -1,20 +1,63 @@
-# TokenBeacon
+<h1 align="center">TokenBeacon</h1>
 
-**Usage & Context Dashboard for Codex**
+<p align="center">
+  <strong>Usage &amp; Context Dashboard for Codex</strong><br>
+  See how full every thread's context is, how many tokens it used and how much
+  of your 5-hour and weekly limits is left – locally, read-only, on your desk.
+</p>
 
-A local, read-only dashboard for your Codex projects and threads. It shows
-context usage, token usage, compactions and your account limits at a glance,
-using only the data Codex already stores on your machine.
+<p align="center">
+  <a href="https://github.com/msuranek/tokenbeacon/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/msuranek/tokenbeacon/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/msuranek/tokenbeacon/actions/workflows/firmware.yml"><img alt="Firmware" src="https://github.com/msuranek/tokenbeacon/actions/workflows/firmware.yml/badge.svg?branch=main"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="macOS and Windows 11" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%2011-lightgrey.svg">
+  <img alt="Node.js 22.18 or newer" src="https://img.shields.io/badge/node-%E2%89%A5%2022.18-green.svg">
+</p>
+
+![The TokenBeacon dashboard next to a LILYGO T-Display-S3 desk display running TokenBeacon](docs/images/hero.jpg)
+
+<p align="center"><sub>The dashboard uses fictional demo data. The display is a
+photo of a real T-Display-S3; its values and thread name are illustrative.</sub></p>
 
 > **Unofficial project.** TokenBeacon is an independent community project. It
 > is not affiliated with, endorsed by, or sponsored by OpenAI. "Codex" and
 > "ChatGPT" are trademarks of OpenAI.
 
-**Status:** v0.2.0 – early and experimental. Runs on **macOS** and **Windows 11**.
+**Status:** v0.3.0 – early and experimental. Runs on **macOS** and
+**Windows 11**. The USB desk display is a preview.
 
-![TokenBeacon dashboard showing projects, threads, context usage and account limits](docs/screenshot.png)
+## Highlights
 
-<sub>The screenshot uses fictional demo data.</sub>
+- **Every project and thread at a glance** – context usage, token usage,
+  compactions, model and last activity, read from the data Codex already
+  stores on your computer.
+- **Your account limits** – the 5-hour and weekly windows: used, left and when
+  they reset.
+- **Honest numbers** – every value is *Current*, *Last known* or *Unavailable*;
+  nothing is estimated.
+- **Private by design** – local only, read-only, no telemetry, no accounts, no
+  credentials, no outbound connections.
+- **Optional desk display (preview)** – a LILYGO T-Display-S3 on a USB cable
+  shows your limits and the context of the thread you are working on.
+
+## Quick start
+
+```sh
+git clone https://github.com/msuranek/tokenbeacon.git
+cd tokenbeacon
+npm install
+npm start
+```
+
+Open <http://127.0.0.1:4310>. You need Node.js 22.18 or newer, Git and Codex
+used at least once on this computer (details in [Requirements](#requirements)).
+
+With a [TokenBeacon display](#desk-display-preview) plugged in:
+
+```sh
+TOKENBEACON_DEVICE=auto npm start                      # macOS
+$env:TOKENBEACON_DEVICE = "auto"; npm start            # Windows PowerShell
+```
 
 ## Features
 
@@ -34,6 +77,113 @@ using only the data Codex already stores on your machine.
 - **Search** across projects and thread titles.
 - **Clear diagnostics** when Codex data is missing, incomplete or in an
   unsupported format.
+- **Desk display (preview)** – the limits and the current thread's context on
+  a small USB display, see below.
+
+See the [full-size dashboard screenshot](docs/screenshot.png) (fictional demo
+data).
+
+## Desk display (preview)
+
+TokenBeacon can drive a small display next to your keyboard: a **LILYGO
+T-Display-S3** (ESP32-S3 with a 1.9" 170 × 320 screen) running the
+[TokenBeacon firmware](firmware/README.md). It shows your 5-hour and weekly
+limits and the context of the most recently active thread, updated live over a
+single USB-C cable.
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/images/display-overview.jpg" alt="Overview screen in portrait: 5-hour limit, weekly limit, context and thread name"><br><sub><b>Overview</b> – all three values</sub></td>
+    <td align="center" width="33%"><img src="docs/images/display-context.jpg" alt="Context screen in portrait: context used, context left, measurement age and thread name"><br><sub><b>Context</b> – the current thread</sub></td>
+    <td align="center" width="33%"><img src="docs/images/display-info.jpg" alt="Info screen in portrait: USB connection, last update, firmware, protocol, orientation, thread name"><br><sub><b>Info</b> – connection and settings</sub></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="3"><img src="docs/images/display-limits-landscape.jpg" alt="Limits screen in landscape: 5-hour limit as a ring and the weekly limit with reset times" width="640"><br><sub><b>Limits</b> in landscape – the 5-hour ring and the weekly limit with reset times</sub></td>
+  </tr>
+</table>
+
+<sub>Photos of a real T-Display-S3 running TokenBeacon, retouched for
+consistent framing and background. The thread name and the values are
+illustrative; on the Limits photo the screen indicator was corrected to match
+the firmware.</sub>
+
+### Four screens
+
+Dots at the bottom of the display show which screen is open.
+
+| Screen | What it shows |
+| --- | --- |
+| **Overview** | 5-hour limit, weekly limit and context in one view, with reset times, measurement age and (optionally) the thread name. |
+| **Limits** | The 5-hour limit as a ring and the weekly limit, each with its reset countdown. |
+| **Context** | Context used and left for the most recently active thread, when it was measured and (optionally) its name. |
+| **Info** | USB connection, last update, firmware version, protocol, orientation and whether the thread name is shown. |
+
+Each value carries a tag: `NOW` (current, link live), `LAST` (last known),
+`WAIT` (the limit window has ended and no new value exists yet) or `N/A`
+(TokenBeacon has no value). The status in the top right is `LIVE`, `STALE` (no
+update for over 30 seconds) or `OFFLINE` (over 2 minutes).
+
+### Button, portrait and landscape
+
+Of the two buttons next to the USB-C port, **BOOT** is left alone; the other
+one (**GPIO14**) controls the display:
+
+- **Short press** – next screen: Overview → Limits → Context → Info.
+- **Hold for about a second** – switch between **portrait** (USB-C at the
+  bottom) and **landscape** (USB-C on the right). The display remembers the
+  orientation and starts on Overview.
+
+### USB connection
+
+- One USB-C cable carries power and data; the display has **no Wi-Fi, no
+  Bluetooth and no network**, and the firmware never starts them.
+- With `TOKENBEACON_DEVICE=auto`, TokenBeacon looks for a USB device named
+  **TokenBeacon Display**, checks it with a handshake and only then sends data.
+  Other serial devices are left alone. You can also name a port, for example
+  `COM5` or `/dev/cu.usbmodem1101`.
+- TokenBeacon sends only the limits, the context, whether each value is
+  current and how old it is. It never sends project names, prompts,
+  conversation content, file paths, token counts, model names or credentials
+  ([protocol](docs/device-protocol.md)). The display stores only its
+  orientation.
+- Unplug the display at any time: TokenBeacon releases the port and reconnects
+  when it is back. If another program holds the port, TokenBeacon waits and
+  retries; it never stops other programs, and it never resets the board.
+- `/api/health` shows the display's state (`searching`, `handshake`,
+  `connected`, `busy`, `unrecognized`) with a short code.
+
+### Thread name (optional)
+
+With `TOKENBEACON_DEVICE_TITLE=on`, TokenBeacon also sends the name of the
+thread whose context is shown – exactly as the dashboard shows it. The display
+shows it on Overview and Context while the data is live, wraps it to the
+available width (`...` when cut) and never stores it. It is **off by default**:
+a thread name can contain anything you typed, so leave it off if others can
+see the display.
+
+```sh
+TOKENBEACON_DEVICE=auto TOKENBEACON_DEVICE_TITLE=on npm start
+```
+
+```powershell
+$env:TOKENBEACON_DEVICE = "auto"; $env:TOKENBEACON_DEVICE_TITLE = "on"; npm start
+```
+
+### Set up the display
+
+1. Get a **LILYGO T-Display-S3** (the non-touch version is enough) and a USB-C
+   data cable.
+2. Install [PlatformIO Core](https://platformio.org/) and flash the firmware
+   from source – see [firmware/README.md](firmware/README.md):
+   ```sh
+   cd firmware
+   pio run -e tdisplay_s3 -t upload
+   ```
+3. Start TokenBeacon with `TOKENBEACON_DEVICE=auto` (see above). The display
+   shows “Waiting for TokenBeacon” until it connects, then `LIVE`.
+
+Enable the display in **one** TokenBeacon instance only: two instances on the
+same display interfere with each other.
 
 ## Privacy and security
 
@@ -218,6 +368,9 @@ table.
   threads are decompressed. The dashboard refreshes every 5 seconds.
 - **Single user, local machine.** There is no authentication. Do not put the
   monitor behind a reverse proxy or expose it to a network.
+- **Desk display is a preview.** It is verified on a LILYGO T-Display-S3 with
+  macOS and Windows 11, and the firmware is built and flashed from source.
+  Only one TokenBeacon instance per computer should have the display enabled.
 
 ## Troubleshooting
 
@@ -232,6 +385,9 @@ table.
 | Many values show N/A | Your Codex version may store data differently. The notice above the table explains which data is missing. |
 | A limit shows “Awaiting fresh data” | The usage window has ended. Make any request in Codex; the card updates automatically. |
 | “The local server isn't running” | Start it with `npm start`; the page reconnects automatically. |
+| The display shows “Waiting for TokenBeacon” | Start TokenBeacon with `TOKENBEACON_DEVICE=auto` and check the `device` entry in `/api/health`. Use a USB-C cable that carries data, not only power. |
+| `/api/health` shows the display as `busy` | Another program (for example a serial monitor) has the port open. Close it; TokenBeacon retries on its own. |
+| The display shows `STALE` or `OFFLINE` | TokenBeacon stopped sending: check that it is still running and that only one instance has the display enabled. |
 
 For a technical overview of each data source, open
 <http://127.0.0.1:4310/api/health>. It lists every source with a short status

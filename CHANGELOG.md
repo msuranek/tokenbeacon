@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Preview: with `TOKENBEACON_DEVICE_TITLE=on` (off by default) the USB display
   also shows the name of the most recent thread, the one whose context it
   shows. Only displays that ask for it in the handshake receive it.
+- README: a guide to the desk display (screens, button, orientation, USB
+  connection, thread name, setup) with photos of the T-Display-S3.
 
 ### Fixed
 

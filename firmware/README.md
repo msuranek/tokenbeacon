@@ -6,8 +6,12 @@ thread's name. It talks to
 TokenBeacon over a single USB-C cable using the
 [`device-state/v1`](../docs/device-protocol.md) protocol.
 
-> **Preview.** Verified on a T-Display-S3 with macOS; Windows is not verified
-> yet.
+> **Preview.** Verified on a T-Display-S3 with macOS and Windows 11.
+
+<p align="center"><img src="../docs/images/display-overview.jpg" alt="T-Display-S3 running TokenBeacon, Overview screen in portrait" width="320"></p>
+
+<p align="center"><sub>Photo of a real board; the values and the thread name are
+illustrative. More screens in the <a href="../README.md#desk-display-preview">main README</a>.</sub></p>
 
 - Reference board: **LILYGO T-Display-S3** (ESP32-S3, 16 MB flash, 8 MB PSRAM,
   1.9" ST7789 170 × 320 display). The touch version is not needed.
@@ -57,7 +61,7 @@ The display shows “Waiting for TokenBeacon” until TokenBeacon connects.
 - short press: next screen – **Overview** (all three values), **Limits** (5-hour
   ring and weekly limit with reset times), **Context** (usage, what is left, when
   it was measured), **Info** (connection, last update, firmware, protocol,
-  orientation); dots at the bottom show which one is open;
+  orientation, whether the thread name is shown); dots at the bottom show which one is open;
 - hold for about a second: switch between portrait and landscape. The display
   remembers the orientation and starts on Overview.
 
