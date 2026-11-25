@@ -24,7 +24,12 @@ export type LimitField =
   | { st: "current" | "last-known"; win: "expired"; age?: number }
   | { st: "current" | "last-known"; left: number; win: "active"; reset?: number; age?: number };
 
-export type ContextField = { st: "unavailable" } | { st: "current" | "last-known"; used: number; age?: number };
+/**
+ * `title` (optional, P-037): the name of the thread the context belongs to.
+ * Sent only to a device that announced the "title" capability, and only when
+ * the user turned it on (TOKENBEACON_DEVICE_TITLE=on).
+ */
+export type ContextField = { st: "unavailable" } | { st: "current" | "last-known"; used: number; age?: number; title?: string };
 
 export interface StateMessage {
   tb: 1;
@@ -47,7 +52,7 @@ export interface HostHello {
 export type HostMessage = StateMessage | HostHello;
 
 export type DeviceMessage =
-  | { type: "hello"; firmware: string; protocols: number[]; nonce: string; deviceId: string }
+  | { type: "hello"; firmware: string; protocols: number[]; nonce: string; deviceId: string; caps: string[] }
   | { type: "alive"; seq: number; uptimeSeconds: number }
   | { type: "error"; code: string };
 
@@ -66,6 +71,20 @@ const NONCE = /^[0-9a-f]{8,32}$/;
 const DEVICE_ID = /^[0-9a-f]{4,32}$/;
 const VERSION = /^[0-9A-Za-z.+-]{1,32}$/;
 const ERROR_CODE = /^[a-z][a-z0-9_]{0,31}$/;
+const CAPABILITY = /^[a-z0-9_]{1,16}$/;
+const MAX_CAPABILITIES = 8;
+
+/** Device capability: show the name of the thread the context belongs to (P-037). */
+export const TITLE_CAPABILITY = "title";
+/**
+ * Technical limit for `ctx.title` in UTF-8 bytes. With the largest possible
+ * state line (about 250 bytes) it stays well under MAX_LINE_BYTES, and the
+ * device keeps it in a fixed buffer. Longer titles are cut at a character
+ * boundary and end with "...".
+ */
+export const MAX_TITLE_BYTES = 200;
+// C0/C1 controls and DEL are never part of a title on the wire.
+const TITLE_CONTROL = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f]");
 
 // ---------------------------------------------------------------------------
 // Host -> device
@@ -86,17 +105,63 @@ export function buildHello(version: string, nonce: string): HostHello {
  * times become ages or countdowns in whole seconds because the device has no
  * clock. Missing values are sent as "unavailable", never estimated.
  */
-export function buildStateMessage(snapshot: MonitorSnapshot, seq: number, nowMs: number): StateMessage {
+export function buildStateMessage(
+  snapshot: MonitorSnapshot,
+  seq: number,
+  nowMs: number,
+  options: { title?: boolean } = {},
+): StateMessage {
   if (!Number.isInteger(seq) || seq < 0 || seq > MAX_INT) throw new Error("invalid seq");
-  return {
+  const thread = mostRecentThread(snapshot);
+  const message: StateMessage = {
     tb: 1,
     t: "state",
     seq,
     five: limitField(snapshot.limits.fiveHour, nowMs),
     week: limitField(snapshot.limits.weekly, nowMs),
-    ctx: contextField(mostRecentThread(snapshot), nowMs),
+    ctx: contextField(thread, nowMs),
     next: HEARTBEAT_SECONDS,
   };
+  // The title always comes from the same thread as the context value.
+  if (options.title && message.ctx.st !== "unavailable" && thread) {
+    const room = MAX_LINE_BYTES - Buffer.byteLength(`${JSON.stringify(message)}\n`, "utf8") - Buffer.byteLength(',"title":""');
+    const title = fitTitle(thread.title, Math.min(MAX_TITLE_BYTES, room));
+    if (title) message.ctx = { ...message.ctx, title };
+  }
+  return message;
+}
+
+/**
+ * The thread title as the dashboard shows it, cut so that its JSON form takes
+ * at most `maxBytes` UTF-8 bytes. Cuts only between whole characters (grapheme
+ * clusters), never inside a UTF-8 sequence, and ends a cut title with "...".
+ * Control characters become spaces. Returns null when nothing is left.
+ */
+export function fitTitle(value: unknown, maxBytes: number): string | null {
+  if (typeof value !== "string" || maxBytes < 4) return null;
+  const text = value.replace(new RegExp(TITLE_CONTROL.source, "g"), " ").replace(/\s+/g, " ").trim();
+  if (!text || !text.isWellFormed()) return null;
+  const jsonBytes = (part: string) => Buffer.byteLength(JSON.stringify(part), "utf8") - 2;
+  if (jsonBytes(text) <= maxBytes) return text;
+  const segments = Array.from(new Intl.Segmenter("und", { granularity: "grapheme" }).segment(text), (part) => part.segment);
+  let cut = "";
+  for (const segment of segments) {
+    if (jsonBytes(cut + segment) + 3 > maxBytes) break;
+    cut += segment;
+  }
+  cut = cut.trimEnd();
+  return cut ? `${cut}...` : null;
+}
+
+/** A title as it may appear on the wire: 1–MAX_TITLE_BYTES bytes, well-formed, no control characters. */
+export function isWireTitle(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.isWellFormed() &&
+    !TITLE_CONTROL.test(value) &&
+    Buffer.byteLength(value, "utf8") <= MAX_TITLE_BYTES
+  );
 }
 
 /** One JSON line with a trailing newline. Throws if it would exceed MAX_LINE_BYTES. */
@@ -187,9 +252,24 @@ export function parseDeviceLine(line: string): ParseResult<DeviceMessage> {
       ) {
         return fail("bad_field");
       }
+      // Optional capabilities (later firmware); unknown names are kept but unused.
+      const caps = record.caps;
+      if (
+        caps !== undefined &&
+        (!Array.isArray(caps) || caps.length > MAX_CAPABILITIES || !caps.every((cap) => typeof cap === "string" && CAPABILITY.test(cap)))
+      ) {
+        return fail("bad_field");
+      }
       return {
         ok: true,
-        message: { type: "hello", firmware: record.fw, protocols: [...protocols] as number[], nonce: record.nonce, deviceId: record.id },
+        message: {
+          type: "hello",
+          firmware: record.fw,
+          protocols: [...protocols] as number[],
+          nonce: record.nonce,
+          deviceId: record.id,
+          caps: caps === undefined ? [] : [...new Set(caps as string[])],
+        },
       };
     }
     case "alive":
@@ -275,7 +355,9 @@ function readContext(value: unknown): ContextField | null {
   if (value.st !== "current" && value.st !== "last-known") return null;
   const st: "current" | "last-known" = value.st;
   if (!isPercent(value.used) || (value.age !== undefined && !isCount(value.age))) return null;
-  return withAge({ st, used: value.used as number }, value.age as number | undefined);
+  if (value.title !== undefined && !isWireTitle(value.title)) return null;
+  const field = withAge({ st, used: value.used as number }, value.age as number | undefined);
+  return value.title === undefined ? field : { ...field, title: value.title as string };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

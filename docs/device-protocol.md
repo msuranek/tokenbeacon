@@ -18,8 +18,10 @@ is plain text, one JSON object per line.
 - **Display data only.** Messages carry the remaining 5-hour and weekly limit,
   the context usage of the most recently active thread, whether each value is
   *current*, *last known* or *unavailable*, and how old it is. They never carry
-  project or thread names, thread IDs, prompts, conversation content, file
-  paths, token counts, model names or credentials.
+  project names, thread IDs, prompts, conversation content, file paths, token
+  counts, model names or credentials. The name of the thread whose context is
+  shown is sent only if the user turns it on and the device asks for it (see
+  [Thread title](#thread-title-optional)).
 - **No estimates.** A value TokenBeacon does not have is sent as
   `{"st":"unavailable"}` and the display shows `N/A`.
 - **No clock on the device.** Times are sent as ages and countdowns in whole
@@ -90,7 +92,27 @@ Sent when the displayed data changes, and at least every `next` seconds
 
 **Context** – `{"st":"unavailable"}`, or
 `{"st":"current"|"last-known","used":0–100,"age":…}` with `used` the whole
-percent of the context window in use.
+percent of the context window in use, and optionally `title` (see below).
+
+#### Thread title (optional)
+
+`ctx.title` is the name of the thread the context value belongs to – always the
+same thread, never another one – as the TokenBeacon dashboard shows it.
+
+- Sent only when the user sets `TOKENBEACON_DEVICE_TITLE=on` on the host (off by
+  default) **and** the device listed `"title"` in `caps` in its `hello` on the
+  current connection. After every reconnect the device must announce it again.
+- 1–200 UTF-8 bytes, no control characters, well-formed UTF-8. Longer titles are
+  cut by the host between whole characters and end with `...`. The text is
+  otherwise unchanged (diacritics, paths and addresses included).
+- Not sent when `ctx` is `unavailable`. When the user turns the feature off, the
+  next `state` has no `title`.
+- A device shows the title only while the data is fresh, removes it when a
+  `state` arrives without it, on a new `hello`, when the host disconnects and
+  when the data becomes stale, and never stores it.
+- A device without the capability never receives it; if it did, it would ignore
+  the unknown field. Title rules for capable devices are in
+  `tests/device-vectors/title-host-to-device.jsonl`.
 
 ## Messages from the device
 
@@ -105,6 +127,7 @@ percent of the context window in use.
 | `dev` | `"tokenbeacon-display"` | Device identity; anything else is `unknown_device`. |
 | `fw` | string, `[0-9A-Za-z.+-]{1,32}` | Firmware version. |
 | `proto` | 1–8 integers 1–255 | Supported protocol major versions. |
+| `caps` | optional, 0–8 strings `[a-z0-9_]{1,16}` | Optional features the device supports, e.g. `["title"]`. Unknown names are ignored. |
 | `nonce` | lowercase hex, 8–32 chars | The host's nonce, echoed. |
 | `id` | lowercase hex, 4–32 chars | Device ID derived from the chip (not the raw MAC address). |
 

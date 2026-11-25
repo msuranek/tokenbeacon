@@ -21,3 +21,4 @@
 {"line": "{\"tb\":1,\"t\":\"state\",\"seq\":1,\"five\":{\"st\":\"unavailable\"},\"ctx\":{\"st\":\"unavailable\"},\"next\":10}\n", "expect": "bad_field", "note": "missing week"}
 {"line": "{\"tb\":1,\"t\":\"hello\",\"host\":\"other\",\"ver\":\"0.3.0\",\"nonce\":\"5f1c9a2e\"}\n", "expect": "bad_field", "note": "wrong host"}
 {"line": "{\"tb\":1,\"t\":\"hello\",\"host\":\"tokenbeacon\",\"ver\":\"0.3.0\",\"nonce\":\"5F1C9A2E\"}\n", "expect": "bad_field", "note": "uppercase nonce"}
+{"line": "{\"tb\":1,\"t\":\"state\",\"seq\":1,\"five\":{\"st\":\"unavailable\"},\"week\":{\"st\":\"unavailable\"},\"ctx\":{\"st\":\"current\",\"used\":17,\"age\":40,\"title\":\"Oprava zástupů – Košice 🚀\"},\"next\":10}\n", "expect": "ok", "note": "context with a thread title (P-037); receivers without the title capability ignore it"}

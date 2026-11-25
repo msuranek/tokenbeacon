@@ -4,46 +4,106 @@
   "title": "TokenBeacon device-state/v1 line",
   "description": "One line of the TokenBeacon USB display protocol. Producers must not add other fields; receivers ignore unknown fields. Lines are at most 512 UTF-8 bytes.",
   "oneOf": [
-    { "$ref": "#/$defs/hostHello" },
-    { "$ref": "#/$defs/state" },
-    { "$ref": "#/$defs/deviceHello" },
-    { "$ref": "#/$defs/alive" },
-    { "$ref": "#/$defs/err" }
+    {
+      "$ref": "#/$defs/hostHello"
+    },
+    {
+      "$ref": "#/$defs/state"
+    },
+    {
+      "$ref": "#/$defs/deviceHello"
+    },
+    {
+      "$ref": "#/$defs/alive"
+    },
+    {
+      "$ref": "#/$defs/err"
+    }
   ],
   "$defs": {
-    "count": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
-    "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
-    "version": { "type": "string", "pattern": "^[0-9A-Za-z.+-]{1,32}$" },
-    "nonce": { "type": "string", "pattern": "^[0-9a-f]{8,32}$" },
-    "availableState": { "enum": ["current", "last-known"] },
+    "count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9A-Za-z.+-]{1,32}$"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8,32}$"
+    },
+    "availableState": {
+      "enum": [
+        "current",
+        "last-known"
+      ]
+    },
     "unavailable": {
       "type": "object",
-      "required": ["st"],
-      "properties": { "st": { "const": "unavailable" } },
+      "required": [
+        "st"
+      ],
+      "properties": {
+        "st": {
+          "const": "unavailable"
+        }
+      },
       "additionalProperties": false
     },
     "limit": {
       "oneOf": [
-        { "$ref": "#/$defs/unavailable" },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
         {
           "type": "object",
-          "required": ["st", "win"],
+          "required": [
+            "st",
+            "win"
+          ],
           "properties": {
-            "st": { "$ref": "#/$defs/availableState" },
-            "win": { "const": "expired" },
-            "age": { "$ref": "#/$defs/count" }
+            "st": {
+              "$ref": "#/$defs/availableState"
+            },
+            "win": {
+              "const": "expired"
+            },
+            "age": {
+              "$ref": "#/$defs/count"
+            }
           },
           "additionalProperties": false
         },
         {
           "type": "object",
-          "required": ["st", "left", "win"],
+          "required": [
+            "st",
+            "left",
+            "win"
+          ],
           "properties": {
-            "st": { "$ref": "#/$defs/availableState" },
-            "left": { "$ref": "#/$defs/percent" },
-            "win": { "const": "active" },
-            "reset": { "$ref": "#/$defs/count" },
-            "age": { "$ref": "#/$defs/count" }
+            "st": {
+              "$ref": "#/$defs/availableState"
+            },
+            "left": {
+              "$ref": "#/$defs/percent"
+            },
+            "win": {
+              "const": "active"
+            },
+            "reset": {
+              "$ref": "#/$defs/count"
+            },
+            "age": {
+              "$ref": "#/$defs/count"
+            }
           },
           "additionalProperties": false
         }
@@ -51,14 +111,31 @@
     },
     "context": {
       "oneOf": [
-        { "$ref": "#/$defs/unavailable" },
+        {
+          "$ref": "#/$defs/unavailable"
+        },
         {
           "type": "object",
-          "required": ["st", "used"],
+          "required": [
+            "st",
+            "used"
+          ],
           "properties": {
-            "st": { "$ref": "#/$defs/availableState" },
-            "used": { "$ref": "#/$defs/percent" },
-            "age": { "$ref": "#/$defs/count" }
+            "st": {
+              "$ref": "#/$defs/availableState"
+            },
+            "used": {
+              "$ref": "#/$defs/percent"
+            },
+            "age": {
+              "$ref": "#/$defs/count"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Optional (P-037): name of the thread the context belongs to. At most 200 UTF-8 bytes, no control characters. Sent only to devices with the \"title\" capability."
+            }
           },
           "additionalProperties": false
         }
@@ -66,67 +143,165 @@
     },
     "hostHello": {
       "type": "object",
-      "required": ["tb", "t", "host", "ver", "nonce"],
+      "required": [
+        "tb",
+        "t",
+        "host",
+        "ver",
+        "nonce"
+      ],
       "properties": {
-        "tb": { "const": 1 },
-        "t": { "const": "hello" },
-        "host": { "const": "tokenbeacon" },
-        "ver": { "$ref": "#/$defs/version" },
-        "nonce": { "$ref": "#/$defs/nonce" }
+        "tb": {
+          "const": 1
+        },
+        "t": {
+          "const": "hello"
+        },
+        "host": {
+          "const": "tokenbeacon"
+        },
+        "ver": {
+          "$ref": "#/$defs/version"
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        }
       },
       "additionalProperties": false
     },
     "state": {
       "type": "object",
-      "required": ["tb", "t", "seq", "five", "week", "ctx", "next"],
+      "required": [
+        "tb",
+        "t",
+        "seq",
+        "five",
+        "week",
+        "ctx",
+        "next"
+      ],
       "properties": {
-        "tb": { "const": 1 },
-        "t": { "const": "state" },
-        "seq": { "$ref": "#/$defs/count" },
-        "five": { "$ref": "#/$defs/limit" },
-        "week": { "$ref": "#/$defs/limit" },
-        "ctx": { "$ref": "#/$defs/context" },
-        "next": { "type": "integer", "minimum": 1, "maximum": 60 }
+        "tb": {
+          "const": 1
+        },
+        "t": {
+          "const": "state"
+        },
+        "seq": {
+          "$ref": "#/$defs/count"
+        },
+        "five": {
+          "$ref": "#/$defs/limit"
+        },
+        "week": {
+          "$ref": "#/$defs/limit"
+        },
+        "ctx": {
+          "$ref": "#/$defs/context"
+        },
+        "next": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 60
+        }
       },
       "additionalProperties": false
     },
     "deviceHello": {
       "type": "object",
-      "required": ["tb", "t", "dev", "fw", "proto", "nonce", "id"],
+      "required": [
+        "tb",
+        "t",
+        "dev",
+        "fw",
+        "proto",
+        "nonce",
+        "id"
+      ],
       "properties": {
-        "tb": { "const": 1 },
-        "t": { "const": "hello" },
-        "dev": { "const": "tokenbeacon-display" },
-        "fw": { "$ref": "#/$defs/version" },
+        "tb": {
+          "const": 1
+        },
+        "t": {
+          "const": "hello"
+        },
+        "dev": {
+          "const": "tokenbeacon-display"
+        },
+        "fw": {
+          "$ref": "#/$defs/version"
+        },
         "proto": {
           "type": "array",
           "minItems": 1,
           "maxItems": 8,
-          "items": { "type": "integer", "minimum": 1, "maximum": 255 }
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          }
         },
-        "nonce": { "$ref": "#/$defs/nonce" },
-        "id": { "type": "string", "pattern": "^[0-9a-f]{4,32}$" }
+        "caps": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{1,16}$"
+          },
+          "description": "Optional device capabilities, e.g. [\"title\"]."
+        },
+        "nonce": {
+          "$ref": "#/$defs/nonce"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{4,32}$"
+        }
       },
       "additionalProperties": false
     },
     "alive": {
       "type": "object",
-      "required": ["tb", "t", "seq", "up"],
+      "required": [
+        "tb",
+        "t",
+        "seq",
+        "up"
+      ],
       "properties": {
-        "tb": { "const": 1 },
-        "t": { "const": "alive" },
-        "seq": { "$ref": "#/$defs/count" },
-        "up": { "$ref": "#/$defs/count" }
+        "tb": {
+          "const": 1
+        },
+        "t": {
+          "const": "alive"
+        },
+        "seq": {
+          "$ref": "#/$defs/count"
+        },
+        "up": {
+          "$ref": "#/$defs/count"
+        }
       },
       "additionalProperties": false
     },
     "err": {
       "type": "object",
-      "required": ["tb", "t", "code"],
+      "required": [
+        "tb",
+        "t",
+        "code"
+      ],
       "properties": {
-        "tb": { "const": 1 },
-        "t": { "const": "err" },
-        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,31}$" }
+        "tb": {
+          "const": 1
+        },
+        "t": {
+          "const": "err"
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,31}$"
+        }
       },
       "additionalProperties": false
     }

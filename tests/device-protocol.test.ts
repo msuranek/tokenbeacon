@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 import {
   buildHello,
   buildStateMessage,
+  fitTitle,
+  isWireTitle,
   MAX_LINE_BYTES,
+  MAX_TITLE_BYTES,
   nextSeq,
   parseDeviceLine,
   parseHostLine,
@@ -221,7 +224,7 @@ describe("device protocol: parsing untrusted lines", () => {
     );
     assert.deepEqual(result, {
       ok: true,
-      message: { type: "hello", firmware: "0.1.0", protocols: [1, 2], nonce: "5f1c9a2e", deviceId: "c3a9f01b" },
+      message: { type: "hello", firmware: "0.1.0", protocols: [1, 2], nonce: "5f1c9a2e", deviceId: "c3a9f01b", caps: [] },
     });
   });
 
@@ -249,5 +252,69 @@ describe("device protocol: isolated from the rest of the application", () => {
     );
     // start.ts starts the bridge only when TOKENBEACON_DEVICE is set (see startup tests).
     assert.deepEqual(importers.map((file) => path.relative(ROOT, file).split(path.sep).join("/")), ["src/start.ts"]);
+  });
+});
+
+describe("device protocol: thread title (P-037)", () => {
+  test("title rules for devices with the title capability (shared with the firmware)", () => {
+    const vectors = readLines("title-host-to-device.jsonl");
+    assert.ok(vectors.length >= 10);
+    for (const vector of vectors) {
+      const result = parseHostLine(vector.line);
+      assert.equal(result.ok ? "ok" : result.code, vector.expect, vector.note);
+    }
+  });
+
+  test("a device hello keeps its validated capabilities", () => {
+    const result = parseDeviceLine('{"tb":1,"t":"hello","dev":"tokenbeacon-display","fw":"0.2.0","proto":[1],"caps":["title","title"],"nonce":"5f1c9a2e","id":"c3a9f01b"}\n');
+    assert.ok(result.ok && result.message.type === "hello");
+    assert.deepEqual(result.message.type === "hello" && result.message.caps, ["title"]);
+  });
+
+  test("the title is kept as written and cut only at character boundaries", () => {
+    assert.equal(fitTitle("Najít příčinu ~/repo/a.ts jane@example.com", 200), "Najít příčinu ~/repo/a.ts jane@example.com");
+    assert.equal(fitTitle("  a\tb\u0000c  ", 200), "a b c");
+    assert.equal(fitTitle("", 200), null);
+    assert.equal(fitTitle("\ud800 broken", 200), null);
+    // Long Czech and emoji titles: never longer than the limit, never a broken character, end with "...".
+    for (const text of ["ž".repeat(150), "Příliš žluťoučký kůň úpěl ďábelské ódy ".repeat(8), "👩‍💻🚀".repeat(60), "a".repeat(199) + "ž"]) {
+      const title = fitTitle(text, MAX_TITLE_BYTES)!;
+      assert.ok(Buffer.byteLength(title, "utf8") <= MAX_TITLE_BYTES, text.slice(0, 10));
+      assert.ok(title.endsWith("..."));
+      assert.ok(title.isWellFormed());
+      assert.ok(text.startsWith(title.slice(0, -3).trimEnd()));
+      assert.ok(isWireTitle(title));
+    }
+    // A family emoji (ZWJ sequence) is kept whole or dropped whole.
+    const family = "👨‍👩‍👧";
+    const cut = fitTitle("x".repeat(180) + family + "y".repeat(40), 200)!;
+    assert.ok(cut.includes(family) || !cut.includes("\u200d"));
+  });
+
+  test("with a title the state line still fits, for the largest possible values", () => {
+    const worst = {
+      limits: {
+        fiveHour: { value: { usedPercent: 0, windowMinutes: 300, resetsAt: "2090-01-01T00:00:00Z", status: "active" }, state: "last-known", observedAt: "1970-01-01T00:00:00Z" },
+        weekly: { value: { usedPercent: 0, windowMinutes: 10080, resetsAt: "2090-01-01T00:00:00Z", status: "active" }, state: "last-known", observedAt: "1970-01-01T00:00:00Z" },
+      },
+      projects: [],
+      unassignedThreads: [
+        {
+          title: "\"\\ž🚀".repeat(200),
+          contextUsedPercent: { value: 100, state: "last-known", observedAt: "1970-01-01T00:00:00Z", source: null },
+          lastActivityAt: { value: "2026-11-19T12:00:00Z", state: "current", observedAt: null, source: null },
+        },
+      ],
+    } as unknown as MonitorSnapshot;
+    const message = buildStateMessage(worst, 2_147_483_647, Date.parse("2026-11-19T12:00:00Z"), { title: true });
+    const line = serializeMessage(message);
+    assert.ok(Buffer.byteLength(line, "utf8") <= MAX_LINE_BYTES);
+    const parsed = parseHostLine(line);
+    assert.ok(parsed.ok);
+    const ctx = parsed.ok && parsed.message.t === "state" ? parsed.message.ctx : null;
+    assert.ok(ctx && ctx.st !== "unavailable" && ctx.title?.endsWith("..."));
+    // Without the option nothing of the thread but its context value is sent.
+    const plain = serializeMessage(buildStateMessage(worst, 1, Date.parse("2026-11-19T12:00:00Z")));
+    assert.ok(!plain.includes("title") && !plain.includes("ž"));
   });
 });
